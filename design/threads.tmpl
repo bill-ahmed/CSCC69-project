@@ -8,7 +8,7 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
+Tanner Bergeron tanner.bergeron@mail.utoronto.ca
 FirstName LastName <email@domain.example>
 FirstName LastName <email@domain.example>
 
@@ -29,6 +29,21 @@ FirstName LastName <email@domain.example>
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
+enum thread_status
+  {
+    /* New thread state */
+    THREAD_SLEEPING,    /* Waiting on timer to wake it up */ 
+  };
+
+struct list sleeped_threads_list;
+
+struct sleeped_thread_info 
+  { 
+    int64_t wakeup_time;
+    struct thread *t;
+    struct list_elem elem;
+  };
 
 ---- ALGORITHMS ----
 
