@@ -38,7 +38,7 @@ enum thread_status
 
 struct list sleeped_threads_list;
 
-struct sleeped_thread_info 
+struct sleep_info 
   { 
     int64_t wakeup_time;
     struct thread *t;
