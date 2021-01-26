@@ -196,7 +196,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
       list_remove (curr);
       thread_wake (t);
 
-      /* Allocated in thread_sleep() */ 
       curr = next;
     }
   }

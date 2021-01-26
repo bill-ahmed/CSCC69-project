@@ -269,7 +269,7 @@ thread_unblock (struct thread *t)
 
 /* Used as compare func to sort and insert into sleeped_threads_list */
 bool sleep_info_compare(struct list_elem *a, struct list_elem *b,
-                               void *aux)
+                        void *aux)
 {
   return list_entry(a, struct thread, elem)->wakeup_time <
     list_entry(b, struct thread, elem)->wakeup_time;
