@@ -180,24 +180,24 @@ timer_interrupt (struct intr_frame *args UNUSED)
   if (!list_empty (&sleeped_threads_list)) {
     struct list_elem *curr = list_head (&sleeped_threads_list)->next;
     struct list_elem *tail = list_tail (&sleeped_threads_list);
-
+    struct list_elem *next;
     while (curr != tail)
     {
       /* Get the info struct to look up time */
-      struct sleep_info *sti = 
-        list_entry(curr, struct sleep_info, elem);
+      struct thread *t = list_entry(curr, struct thread, elem);
 
       /* No need to look further into the list since sorted */
-      if (ticks < sti->wakeup_time)
+      if (ticks < t->wakeup_time)
         break;
+
+      next = curr->next;
 
       /* Wake and free the info struct */
       list_remove (curr);
-      thread_wake (sti->t);
+      thread_wake (t);
 
-      /* Allocated in thread_sleep() */
-      free (sti); 
-      curr = curr->next;
+      /* Allocated in thread_sleep() */ 
+      curr = next;
     }
   }
   /* External interupts yield once returned */

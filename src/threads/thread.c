@@ -271,8 +271,8 @@ thread_unblock (struct thread *t)
 bool sleep_info_compare(struct list_elem *a, struct list_elem *b,
                                void *aux)
 {
-  return list_entry(a, struct sleep_info, elem)->wakeup_time <
-    list_entry(b, struct sleep_info, elem)->wakeup_time;
+  return list_entry(a, struct thread, elem)->wakeup_time <
+    list_entry(b, struct thread, elem)->wakeup_time;
 }
 
 
@@ -282,14 +282,8 @@ void
 thread_sleep (struct thread *t, int64_t sleep_until) 
 {
   ASSERT(!intr_context());
-
-  /* freed in timer_interrupt() */
-  struct sleep_info *sti;
-  sti = malloc(sizeof *sti);
-  ASSERT (sti != NULL);
-
-  sti->t = t;
-  sti->wakeup_time = sleep_until;
+ 
+  t->wakeup_time = sleep_until;
 
   /* Turn off interrupts to avoid preemptive calling "schedule()"
      and it seeing the thread with status THREAD_SLEEPING but
@@ -297,10 +291,10 @@ thread_sleep (struct thread *t, int64_t sleep_until)
   enum intr_level old_level;
   old_level = intr_disable();
 
-  sti->t->status = THREAD_SLEEPING;
+  t->status = THREAD_SLEEPING;
 
   /* Insert into list of sleeping threads */
-  list_insert_ordered(&sleeped_threads_list, &sti->elem,
+  list_insert_ordered(&sleeped_threads_list, &t->elem,
                       &sleep_info_compare, NULL);
 
   schedule();

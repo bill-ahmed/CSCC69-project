@@ -30,41 +30,96 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
-enum thread_status
-  {
-    /* New thread state */
-    THREAD_SLEEPING,    /* Waiting on timer to wake it up */ 
-  };
+    /* Required a notion of a thread being asleep since blocked is
+    going to be reserved for locks. */
+    enum thread_status
+    {
+        /* New thread state */
+        THREAD_SLEEPING,    /* Waiting on timer to wake it up */ 
+    };
 
-struct list sleeped_threads_list;
+    /* If threads can sleep, we need to know for how long. Member only
+    accessed if thread is running and going to sleep */
+    struct thread
+    {
+        /* New struct member */
+        int64_t wakeup_time;     /* When to wake up this thread from sleep */
+    }
 
-struct sleep_info 
-  { 
-    int64_t wakeup_time;
-    struct thread *t;
-    struct list_elem elem;
-  };
+    /* Required to keep track of which threads are currently sleeping.
+    Sorted by thread->wakeup_time ASC for fast timer checks */
+    struct list sleeped_threads_list;
 
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe what happens in a call to timer_sleep(),
 >> including the effects of the timer interrupt handler.
 
+    timer_sleep calls thread_sleep with the time it should wake
+    up at.
+
+    thread_sleep fills in the thread information, sets it's status
+    to sleeping, adds it to a sleeping thread list, and finally
+    calls the scheduler to switch threads. All of these actions
+    must be atomic, so inturrupts are disabled for the duration
+    of these calls inside thread_sleep.
+
+    Once the stack is restored and it wakes up, it continues and
+    returns from timer_sleep as it should.
+
+    When a timer inturrupt occurs, it ticks and then it checks
+    if any sleeping threads should be woken up. Any threads that
+    have waited long enough are dequeued from the sleeping list,
+    made their status set to ready, and added to the ready list.
+
+    This means when the timer inturrupt finishes and yields, a
+    newly awoken thread now has the possibility of being chosen
+    and run.
+
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
+
+    The list of sleeping threads is sorted by wakeup_time which
+    means if we know the current time, we can look at the first
+    thread in the list and if it is not ready to be awoken, we
+    also know none of the others are either. This means sleeping
+    a large number of threads causes no penalty to timer inturrupts.
 
 ---- SYNCHRONIZATION ----
 
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
 
+    A thread is only able to put itself to sleep, therefore until
+    it runs code to actually change the state of the thread and
+    add it to the sleeping list, and schedule, all other operations
+    need not be atomic. The few that are, are surrounded by inturrupt
+    disable and enable.
+
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
+
+    Atomic section is minimally wrapped by inturrupt disable/restore.
 
 ---- RATIONALE ----
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+
+    We needed a way to tell the scheduler not to schedule a sleeping
+    thread, and a way to wake it up efficiently after an amount of time.
+    Busy waiting will not do.
+
+    We wanted to write a minimal amount of code because adding something
+    overly complex just introduces bugs. Having a sorted list of sleeping
+    threads was the most efficient because of what is mentioned in A3.
+    Each timer inturrupt we need to check if we should wake up any sleeping
+    threads. That iteration through the list of potentially hundreds of
+    threads is costly and sorting by wake up time allows us to often only
+    need to check the first thread in the list to decide whether to continue.
+
+    This was an efficient implementaiton with not much code added to the
+    base handout.
 
              PRIORITY SCHEDULING
              ===================

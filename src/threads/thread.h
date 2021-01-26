@@ -94,6 +94,8 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    int64_t wakeup_time;                /* When to wake up from sleep */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -106,17 +108,8 @@ struct thread
 /* List of threads blocked by timer */
 struct list sleeped_threads_list;
 
-struct sleep_info
-{
-   struct thread *t;
-   /* The time in ticks when the thread will be awoken */
-   int64_t wakeup_time;
-   /* Owned by timer.c */
-   struct list_elem elem;
-};
-
 bool sleep_info_compare(struct list_elem *a, struct list_elem *b,
-                        void *aux);
+                               void *aux);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
