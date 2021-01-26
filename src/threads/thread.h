@@ -11,6 +11,7 @@ enum thread_status
     THREAD_RUNNING,     /* Running thread. */
     THREAD_READY,       /* Not running but ready to run. */
     THREAD_BLOCKED,     /* Waiting for an event to trigger. */
+    THREAD_SLEEPING,    /* Waiting on timer to wake it up */ 
     THREAD_DYING        /* About to be destroyed. */
   };
 
@@ -93,6 +94,8 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    int64_t wakeup_time;                /* When to wake up from sleep */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -101,6 +104,12 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+
+/* List of threads blocked by timer */
+struct list sleeped_threads_list;
+
+bool sleep_info_compare(struct list_elem *a, struct list_elem *b,
+                               void *aux);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -116,8 +125,11 @@ void thread_print_stats (void);
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
-void thread_block (void);
+void thread_block(void);
 void thread_unblock (struct thread *);
+
+void thread_sleep (struct thread *t, int64_t sleep_until);
+void thread_wake (struct thread *t);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);

@@ -7,6 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "threads/malloc.h"
   
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -90,10 +91,10 @@ void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
-
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  
+  struct thread *t = thread_current();
+  thread_sleep(t, start + ticks);  
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -172,6 +173,33 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+
+  /* Wakes threads that waited long enough. Since list is sorted,
+     returns immediately if either first in list is not done waiting,
+     or the list is empty. */
+  if (!list_empty (&sleeped_threads_list)) {
+    struct list_elem *curr = list_head (&sleeped_threads_list)->next;
+    struct list_elem *tail = list_tail (&sleeped_threads_list);
+    struct list_elem *next;
+    while (curr != tail)
+    {
+      /* Get the info struct to look up time */
+      struct thread *t = list_entry(curr, struct thread, elem);
+
+      /* No need to look further into the list since sorted */
+      if (ticks < t->wakeup_time)
+        break;
+
+      next = curr->next;
+
+      /* Wake and free the info struct */
+      list_remove (curr);
+      thread_wake (t);
+
+      curr = next;
+    }
+  }
+  /* External interupts yield once returned */
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

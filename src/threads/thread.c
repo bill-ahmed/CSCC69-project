@@ -8,6 +8,7 @@
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
@@ -92,6 +93,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleeped_threads_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -204,6 +206,22 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
+/* Private function to simplify other thread functions.
+   Transitions a thread's state to THREAD_READY.
+   This does not preempt the running thread. */
+void thread_set_ready(struct thread *t)
+{
+  enum intr_level old_level;
+
+  ASSERT(is_thread(t));
+
+  /* Disable & restore interrupts to avoid scheduling mishap */
+  old_level = intr_disable();
+  list_push_back(&ready_list, &t->elem);
+  t->status = THREAD_READY;
+  intr_set_level(old_level);
+}
+
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
 
@@ -231,6 +249,11 @@ thread_block (void)
 void
 thread_unblock (struct thread *t) 
 {
+  /* Todo:
+    Simplify by calling thread_set_ready().
+    See thread_wake() as example.
+  */
+
   enum intr_level old_level;
 
   ASSERT (is_thread (t));
@@ -240,6 +263,51 @@ thread_unblock (struct thread *t)
   list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
+}
+
+
+
+/* Used as compare func to sort and insert into sleeped_threads_list */
+bool sleep_info_compare(struct list_elem *a, struct list_elem *b,
+                        void *aux)
+{
+  return list_entry(a, struct thread, elem)->wakeup_time <
+    list_entry(b, struct thread, elem)->wakeup_time;
+}
+
+
+/* Puts a thread into state THREAD_SLEEPING and adds it to
+   the list of sleeping threads. */
+void 
+thread_sleep (struct thread *t, int64_t sleep_until) 
+{
+  ASSERT(!intr_context());
+ 
+  t->wakeup_time = sleep_until;
+
+  /* Turn off interrupts to avoid preemptive calling "schedule()"
+     and it seeing the thread with status THREAD_SLEEPING but
+     not yet inserted properly into the list */
+  enum intr_level old_level;
+  old_level = intr_disable();
+
+  t->status = THREAD_SLEEPING;
+
+  /* Insert into list of sleeping threads */
+  list_insert_ordered(&sleeped_threads_list, &t->elem,
+                      &sleep_info_compare, NULL);
+
+  schedule();
+
+  /* Once stack is restored, reenable interrupts and continue */
+  intr_set_level(old_level);
+}
+
+void 
+thread_wake(struct thread *t)
+{
+  ASSERT(t->status == THREAD_SLEEPING);
+  thread_set_ready(t);
 }
 
 /* Returns the name of the running thread. */
