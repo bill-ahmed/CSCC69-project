@@ -101,6 +101,9 @@ struct thread
     struct lock *lock_waiting_on;       /* A lock this thread is waiting on */
     int64_t wakeup_time;                /* When to wake up from sleep */
 
+    int recent_cpu;                     /* Fixed point value of thread cpu usage  */
+    int nice_value;                     /* Indicates how willing a thread is to give up priority to another. Value between -20 and 20" */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */

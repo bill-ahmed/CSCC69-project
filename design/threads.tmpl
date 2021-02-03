@@ -237,6 +237,15 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+    struct thread
+    {
+        int recent_cpu;                     /* Fixed point value of thread cpu usage. */
+        int nice_value;                     /* Indicates how willing a thread is to give up priority to another. Value between -20 and 20 */
+    }
+
+    // In fixed-point.h
+    #define SHIFT_FACTOR 16384              /* Take last 14 bits in signed 32-bit integer as fractional component. */
+
 ---- ALGORITHMS ----
 
 >> C2: Suppose threads A, B, and C have nice values 0, 1, and 2.  Each
@@ -247,23 +256,38 @@ FirstName LastName <email@domain.example>
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0
- 4
- 8
-12
-16
-20
-24
-28
-32
-36
+ 0      0   0   0  63  61  59     A
+ 4      4   0   0  62  61  59     A
+ 8      8   0   0  61  61  59     B
+12      8   4   0  61  60  59     A
+16      12  4   0  60  60  59     B
+20      12  8   0  60  59  59     A
+24      16  8   0  59  59  59     C  
+28      16  8   4  59  59  58     B
+32      16  12  4  59  58  58     A
+36      20  12  4  58  58  58     C
+
+The above assumes that priorities are calculated on a smaller interval, because normally 
+it would happen ever 100 timer ticks (so in reality, thread A would keep running until 100). 
+At least the way we implemented it...
 
 >> C3: Did any ambiguities in the scheduler specification make values
 >> in the table uncertain?  If so, what rule did you use to resolve
 >> them?  Does this match the behavior of your scheduler?
 
+    The scheduler specification did not indicate whether the current running thread 
+    should yield immediately after its new recent_cpu values gives it a lower 
+    priority than the next waiting thread, since priorities are only compared 
+    every 1 second (100 timer ticks). The rule we made to resolve this was to simply 
+    wait until 1 second had passed for entries to be updated in ready_list.
+
 >> C4: How is the way you divided the cost of scheduling between code
 >> inside and outside interrupt context likely to affect performance?
+
+    If the runtime complexity is too large in/outside interrupt contexts, then the running thread 
+    might not have enough time to execute that task it would've. This could artifically inflate 
+    the load_avg value because the thread would need to get re-queued by the scheduler at a later 
+    time, thereby keeping the ready_list size larger than it needs to be for a longer period of time.
 
 ---- RATIONALE ----
 
@@ -272,12 +296,32 @@ ticks   A   B   C   A   B   C   to run
 >> time to work on this part of the project, how might you choose to
 >> refine or improve your design?
 
+    The design is pretty straight forward, but the obvious critic would be 
+    the new fixed-point.c file. The reference solution only introduced a 
+    single new header file, and so a more compact design could make catching 
+    bugs easier. The advantage over hard-coding the fixed-point operations 
+    was that it can be re-used as many times as desired and keeps the code 
+    more easily maintainable. 
+
+    Also, by keeping track of the recent_cpu and nice values as part of each 
+    thread and not in some global array we avoided running into issues with 
+    maintaining such a data structure, such has having to re-size it 
+    and clean out values for dead/dying threads.
+
 >> C6: The assignment explains arithmetic for fixed-point math in
 >> detail, but it leaves it open to you to implement it.  Why did you
 >> decide to implement it the way you did?  If you created an
 >> abstraction layer for fixed-point math, that is, an abstract data
 >> type and/or a set of functions or macros to manipulate fixed-point
 >> numbers, why did you do so?  If not, why not?
+
+    Similar answer to the previous question, instead of writing giant formulas 
+    into a single/multiple lines, breaking down each bit of functionality 
+    increased re-usability and prevented me from completely pulling my hair out. 
+    Further, during the development process there were many small changes made to 
+    the fixed-point math, and so keeping it abstracted away allowed for more 
+    rapid development & testing. 
+
 
                SURVEY QUESTIONS
                ================
