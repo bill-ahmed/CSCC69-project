@@ -143,16 +143,19 @@ thread_tick (void)
   {
     kernel_ticks++;
   }
-  
-  // Increment recent_cpu for each timer interrupt, only for non-idle threads
-  if(t != idle_thread)
-    t->recent_cpu = add_integer(t->recent_cpu, 1);
 
-  /* Update load average on every second that has passed since boot */
-  if(timer_ticks() % TIMER_FREQ == 0)
+  if(thread_mlfqs)
   {
-    thread_calculate_load_avg ();
-    update_recent_cpu ();
+    // Increment recent_cpu for each timer interrupt, only for non-idle threads
+    if(t != idle_thread)
+      t->recent_cpu = add_integer(t->recent_cpu, 1);      
+
+    /* Update load average on every second that has passed since boot */
+    if(timer_ticks() % TIMER_FREQ == 0)
+    {
+      update_recent_cpu ();
+      thread_calculate_load_avg ();
+    }
   }
 
   /* Enforce preemption. */
@@ -564,7 +567,7 @@ calculate_recent_cpu(struct thread *t, void *aux UNUSED)
   {
     int original_rc = t->recent_cpu;
 
-    int numerator = mult_fp (load_average, convert_fp (2));
+    int numerator = load_average * 2;
     int denominator = add_integer (2 * load_average, 1);
     int quotient = div_fp (numerator, denominator);
 
