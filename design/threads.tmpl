@@ -335,12 +335,39 @@ the quarter.
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
 
+	One of the few difficulties about this assignment for us was getting up to 
+	speed and comfortable with how the pintos code worked. There is a lot of 
+	documentation and it felt a bit overwhelming at first. Because of the open 
+	eneded nature of the tasks, it required thinking up a few different solutions 
+	to the same problem, and choosing one of them to be the way you are going to 
+	implement your code. We spent the most time not on writing the actual code 
+	itself, but instead on debugging small issues that arrised from that process. 
+	I'm glad we had tests to check against because otherwise we wouldn't really have
+	any indication that we were introducing bugs into the code due to the nature of
+	the concurrency of the code and the degree of coupling of all the systems. 
+
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+
+	Understanding how something works from reading about it is one thing, but
+	actually having the opportunity to put it into practice brings that understanding
+	to a next level. Writing the code for the different parts of this assignment
+	definitely gave us a good look into what real operating systems have to deal with
+	(on a more abstract level of course). It's true about other courses as well, but
+	it's especially true here that you get out of the assignment proportionally what
+	you put into it.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
+
+	Calculating the load_avg and recent_cpu was a headache for us because to us it
+	wasn't entirely clear exactly when and where we should be doing these calculations.
+	The documentation mentions things need to be updated each second but other than
+	that, it was a combination of reading through everything we could find in the pintos
+	docs and piazza to get the intended behaviour. In hindsight it's easy to see that it
+	really couldn't have been implemented another way, but from the prospective of us
+	starting that task, we're not sure it was super clear.
 
 >> Do you have any suggestions for the TAs to more effectively assist
 >> students, either for future quarters or the remaining projects?
