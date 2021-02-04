@@ -11,7 +11,6 @@
 Bilal Ahmed <bill.ahmed@mail.utoronto.ca>
 Tanner Bergeron tanner.bergeron@mail.utoronto.ca
 Tanaan Karunakaran tanaan.karunakaran@mail.utoronto.ca
-FirstName LastName <email@domain.example>
 
 ---- PRELIMINARIES ----
 
@@ -62,18 +61,18 @@ FirstName LastName <email@domain.example>
     thread_sleep fills in the thread information, sets it's status
     to sleeping, adds it to a sleeping thread list, and finally
     calls the scheduler to switch threads. All of these actions
-    must be atomic, so inturrupts are disabled for the duration
+    must be atomic, so interrupts are disabled for the duration
     of these calls inside thread_sleep.
 
     Once the stack is restored and it wakes up, it continues and
     returns from timer_sleep as it should.
 
-    When a timer inturrupt occurs, it ticks and then it checks
+    When a timer interrupt occurs, it ticks and then it checks
     if any sleeping threads should be woken up. Any threads that
     have waited long enough are dequeued from the sleeping list,
     made their status set to ready, and added to the ready list.
 
-    This means when the timer inturrupt finishes and yields, a
+    This means when the timer interrupt finishes and yields, a
     newly awoken thread now has the possibility of being chosen
     and run.
 
@@ -84,7 +83,7 @@ FirstName LastName <email@domain.example>
     means if we know the current time, we can look at the first
     thread in the list and if it is not ready to be awoken, we
     also know none of the others are either. This means sleeping
-    a large number of threads causes no penalty to timer inturrupts.
+    a large number of threads causes no penalty to timer interrupts.
 
 ---- SYNCHRONIZATION ----
 
@@ -94,13 +93,13 @@ FirstName LastName <email@domain.example>
     A thread is only able to put itself to sleep, therefore until
     it runs code to actually change the state of the thread and
     add it to the sleeping list, and schedule, all other operations
-    need not be atomic. The few that are, are surrounded by inturrupt
+    need not be atomic. The few that are, are surrounded by interrupt
     disable and enable.
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
 
-    Atomic section is minimally wrapped by inturrupt disable/restore.
+    Atomic section is minimally wrapped by interrupt disable/restore.
 
 ---- RATIONALE ----
 
@@ -114,12 +113,12 @@ FirstName LastName <email@domain.example>
     We wanted to write a minimal amount of code because adding something
     overly complex just introduces bugs. Having a sorted list of sleeping
     threads was the most efficient because of what is mentioned in A3.
-    Each timer inturrupt we need to check if we should wake up any sleeping
+    Each timer interrupt we need to check if we should wake up any sleeping
     threads. That iteration through the list of potentially hundreds of
     threads is costly and sorting by wake up time allows us to often only
     need to check the first thread in the list to decide whether to continue.
 
-    This was an efficient implementaiton with not much code added to the
+    This was an efficient implementation with not much code added to the
     base handout.
 
              PRIORITY SCHEDULING
@@ -143,6 +142,11 @@ FirstName LastName <email@domain.example>
             struct list_elem elem;      /* Which thread this lock is being held by */
         }
 
+    struct semaphore_elem 
+        {
+            int priority;                       /* Priority. */
+        }
+
 >> B2: Explain the data structure used to track priority donation.
 >> Use ASCII art to diagram a nested donation.  (Alternately, submit a
 >> .png file.)
@@ -153,15 +157,18 @@ FirstName LastName <email@domain.example>
 
     Diagram:
     --------
-    let T_i donate Thread I, and L_j donate Lock J.
-
-    T_a waiting on L_i----> T_b holding L_i, waiting on L_j ---> T_c holding L_k
+    Please look at "A1 - Threads.png" which is in the same directory as this file.
 
     In each step of the diagram, the previous thread is waiting on the next thread. Assuming priority goes in order of:
     T_a > T_b > T_c, Thread A will donate to Thread B, and so forth. In the event that Thread B is in the ready queue, 
-    we also keep track of the waiters for each thread via the semaphore imbedded in each lock. This lets us account for the
+    we also keep track of the waiters for each thread via the semaphore embedded in each lock. This lets us account for the
     case where a new thread, Thread D for priority of T_d > T_a, is waiting on Thread B, then T_d's priority can be donated 
     to B, and then C and so forth.
+
+    Further, whenever a thread releases a lock, it's priority is reverted back to the original IF there are no other locks 
+    it is holding. In the case where T_b was holding two or more locks, then its priority would be re-calculated based on 
+    ALL the remaining locks it is holding. This helps ensure that T_b is given the correct order in ready_list, hence why 
+    we added the list `locks_holding` to each thread.
 
 
 ---- ALGORITHMS ----
@@ -172,7 +179,13 @@ FirstName LastName <email@domain.example>
     The list of thread waiting for a semaphore (inside the list "waiters") is kept sorted by
     priority at all times. This ensures that when we pop from the front during a sema_up 
     operation, the highest priority thread is woken up. Since this works for semaphore, the 
-    functionality is also carried over to locks (since locks are implmented with semaphores).
+    functionality is also carried over to locks and condition variables since they are also 
+    implemented with semaphores.
+
+    In the case of condition variables, an additional `priority` attribute is stored within 
+    the semaphore_elem struct, and the list of waiters are sorted by this new attribute. As a 
+    result, when we pop from the front in cond_signal we guarantee that the highest priority 
+    threads are woken up.
 
 >> B4: Describe the sequence of events when a call to lock_acquire()
 >> causes a priority donation.  How is nested donation handled?
@@ -183,6 +196,10 @@ FirstName LastName <email@domain.example>
         2.1 Recursively donate priority to the lock holder (i.e. lock holder also donates to locks it's waiting on, etc.)
     3. Else
         3.1 continue
+    
+    By step 2.1, the donation is carried down to an arbitrary level because each thread T at 
+    depth `i` will check which lock it is waiting on, and donate to T_(i+1). The donations 
+    stop once thread T_(i+1) is seen to already have equal or greater priority than T_i.
 
 >> B5: Describe the sequence of events when lock_release() is called
 >> on a lock that a higher-priority thread is waiting for.
@@ -191,8 +208,8 @@ FirstName LastName <email@domain.example>
     2. The donated priority for current thread is re-calculated, because it 
        could be holding on to locks that other high priority threads are waiting on
     3. The highest priority thread waiting on this lock is woken up via a call to 
-       sema_up (as described in previous question)
-    4. Current thread yeields, and as part of the yielding process if it still has 
+       sema_up (as described in B3)
+    4. Current thread yields, and as part of the yielding process if it still has 
        the highest priority (based on other locks it owns), it runs again
 
 ---- SYNCHRONIZATION ----
@@ -267,9 +284,14 @@ ticks   A   B   C   A   B   C   to run
 32      16  12  4  59  58  58     A
 36      20  12  4  58  58  58     C
 
-The above assumes that priorities are calculated on a smaller interval, because normally 
-it would happen ever 100 timer ticks (so in reality, thread A would keep running until 100). 
-At least the way we implemented it...
+    We assume that load_avg is zero at all times, because it is calculated 
+    every one second. Since only 36 timer ticks have elapsed the load_avg 
+    was not recalculated as given in the scheduler specifications. 
+
+    Further, the above assumes that priorities are calculated on a smaller 
+    interval, because normally it would happen ever 100 timer ticks, so 
+    in reality, thread A would keep running until 100. At least the way we 
+    implemented it...
 
 >> C3: Did any ambiguities in the scheduler specification make values
 >> in the table uncertain?  If so, what rule did you use to resolve
@@ -281,11 +303,16 @@ At least the way we implemented it...
     every 1 second (100 timer ticks). The rule we made to resolve this was to simply 
     wait until 1 second had passed for entries to be updated in ready_list.
 
+    Another ambiguity was the order in which to calculate load_avg and recent_cpu. The 
+    order is quite important because the recent_cpu could be artificially inflated, 
+    and so in the end we decided to calculate recent_cpu first because it more 
+    accurately reflected the test cases.
+
 >> C4: How is the way you divided the cost of scheduling between code
 >> inside and outside interrupt context likely to affect performance?
 
     If the runtime complexity is too large in/outside interrupt contexts, then the running thread 
-    might not have enough time to execute that task it would've. This could artifically inflate 
+    might not have enough time to execute that task it would've. This could artificially inflate 
     the load_avg value because the thread would need to get re-queued by the scheduler at a later 
     time, thereby keeping the ready_list size larger than it needs to be for a longer period of time.
 
