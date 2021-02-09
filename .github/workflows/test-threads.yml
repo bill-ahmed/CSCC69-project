@@ -13,6 +13,13 @@ jobs:
     steps:
     - name: Build and test threads
       uses: actions/checkout@v2
-    - run: bash test_pintos.sh
-  
-  # TODO: Add more jobs here for user programs, virtual memory, file system
+    - run: cd src/threads && make clean && make check
+
+  test-userprog:
+    runs-on: ubuntu-latest
+    container:
+      image: thierrysans/pintos
+    steps:
+    - name: Build and test user programs
+      uses: actions/checkout@v2
+    - run: cd src/userprog && make clean && make check
