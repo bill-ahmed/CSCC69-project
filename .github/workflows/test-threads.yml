@@ -6,15 +6,6 @@ on:
     branches: [ master ]
 
 jobs:
-  test-threads:
-    runs-on: ubuntu-latest
-    container:
-      image: thierrysans/pintos
-    steps:
-    - name: Build and test threads
-      uses: actions/checkout@v2
-    - run: cd src/threads && make clean && make check
-
   test-userprog:
     runs-on: ubuntu-latest
     container:

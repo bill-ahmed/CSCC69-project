@@ -11,7 +11,6 @@ enum thread_status
     THREAD_RUNNING,     /* Running thread. */
     THREAD_READY,       /* Not running but ready to run. */
     THREAD_BLOCKED,     /* Waiting for an event to trigger. */
-    THREAD_SLEEPING,    /* Waiting on timer to wake it up */ 
     THREAD_DYING        /* About to be destroyed. */
   };
 
@@ -88,21 +87,11 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    
     int priority;                       /* Priority. */
-    int priority_donated;               /* Priority temporarily donated to this thread from another. */
-
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-
-    struct list locks_holding;          /* List of all the locks held by this thread */
-    struct lock *lock_waiting_on;       /* A lock this thread is waiting on */
-    int64_t wakeup_time;                /* When to wake up from sleep */
-
-    int recent_cpu;                     /* Fixed point value of thread cpu usage  */
-    int nice_value;                     /* Indicates how willing a thread is to give up priority to another. Value between -20 and 20" */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -112,12 +101,6 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
-
-/* List of threads blocked by timer */
-struct list sleeped_threads_list;
-
-bool sleep_info_compare(struct list_elem *a, struct list_elem *b,
-                               void *aux);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -133,11 +116,8 @@ void thread_print_stats (void);
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
-void thread_block(void);
+void thread_block (void);
 void thread_unblock (struct thread *);
-
-void thread_sleep (struct thread *t, int64_t sleep_until);
-void thread_wake (struct thread *t);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
@@ -152,12 +132,6 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
-
-int get_thread_priority(struct thread *t);
-int donate_priority(struct thread *t, int priority_to_donate);
-void calculate_donated_priority(struct thread *t);
-
-bool priority_compare(struct list_elem *t1, struct list_elem *t2, void *aux);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
