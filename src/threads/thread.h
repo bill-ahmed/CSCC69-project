@@ -93,6 +93,10 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    char process_name[32];              /* The name given to process attached to this thread. */
+    bool waiting_on_child;              /* Whether this thread is waiting on another one or not. */
+    struct thread *parent;              /* Parent that might be waiting on this thread. */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -137,5 +141,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+struct thread * find_tread_by_tid (tid_t tid);
 
 #endif /* threads/thread.h */

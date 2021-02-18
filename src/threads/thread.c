@@ -282,6 +282,12 @@ thread_exit (void)
 {
   ASSERT (!intr_context ());
 
+  struct thread *curr = thread_current ();
+
+  // Make sure parent doesn't keep waiting
+  if(curr->parent != NULL)
+    curr->parent->waiting_on_child = false;
+
 #ifdef USERPROG
   process_exit ();
 #endif
@@ -540,6 +546,21 @@ thread_schedule_tail (struct thread *prev)
       ASSERT (prev != cur);
       palloc_free_page (prev);
     }
+}
+/* Find a thread with given tid, NULL if it doesn't exist */
+struct thread *
+find_tread_by_tid (tid_t tid)
+{
+  struct list_elem *e;
+  for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next(e))
+  {
+    struct thread *t = list_entry (e, struct thread, elem);
+
+    if(t->tid == tid)
+      return t;
+  }
+
+  return NULL;
 }
 
 /* Schedules a new process.  At entry, interrupts must be off and
