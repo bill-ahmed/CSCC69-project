@@ -4,6 +4,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "filesys/filesys.h"
+#include "threads/synch.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -26,11 +28,18 @@ int write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);
 
+// Synchronization variables
+struct lock create_lock;
+struct lock remove_lock;
 
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  
+  // Initialize locks
+  lock_init(&create_lock);
+  lock_init(&remove_lock);
 }
 
 static void
@@ -38,54 +47,109 @@ syscall_handler (struct intr_frame *f)
 {
   /**
    * TODO: probably want to check memory is initialized 
-   *       before trying to reference it
+   *       before trying to dereference it
   */
   int *sys_call_num = f->esp;
 
-  // big boi
+  if (sys_call_num == NULL) {
+    // Throw invalid pointer exception
+  }
+
   switch (*sys_call_num)
+  {
+    case SYS_HALT:
     {
-    // SYS_HALT
-    case 0:
       break;
+    }
     
-    // SYS_EXIT
-    case 1:
+    case SYS_EXIT:
     {
       int *exit_code = f->esp + 4;
       exit (*exit_code);
     }
 
-    // SYS_EXEC
-    case 2:
+    case SYS_EXEC:
+    {
       break;
+    }
 
-    // SYS_WAIT
-    case 3:
+    case SYS_WAIT:
+    {
       break;
+    }
 
-    // SYS_CREATE
-    case 4:
+    case SYS_CREATE:
+    {
+      int *string_buffer_addr = f->esp + 4;
+
+      if (string_buffer_addr == NULL)
+      {
+        exit(-1);
+      }
+
+      // Can't remember which way this comparator goes
+      if (string_buffer_addr > PHYS_BASE)
+      {
+        // Throw a page fault.
+        // This is should pass the last test case (create-bad-ptr)
+      }
+
+      void *file_name = *string_buffer_addr;
+      int *file_size = f->esp + 8;
+
+      if (file_size == NULL || file_name == NULL)
+      {
+        exit(-1);
+      }
+      
+      lock_acquire(&create_lock);
+      f->eax = create(file_name, *file_size);
+      lock_release(&create_lock);
+
       break;
+    }
+      
+    case SYS_REMOVE:
+    {
+      int *string_buffer_addr = f->esp + 4;
 
-    // SYS_REMOVE
-    case 5:
+      if (string_buffer_addr == NULL)
+      {
+        exit(-1);
+      }
+
+      if (string_buffer_addr > PHYS_BASE)
+      {
+        // Throw a page fault.
+      }
+
+      void *file_name = *string_buffer_addr;
+      if (file_name == NULL)
+      {
+        exit(-1);
+      }
+
+      lock_acquire(&remove_lock);
+      f->eax = remove(file_name);
+      lock_release(&remove_lock);
+
       break;
-
-    // SYS_OPEN
-    case 6:
+    }
+      
+    case SYS_OPEN:
+    {
       break;
-
-    // SYS_FILESIZE
-    case 7:
+    }
+    case SYS_FILESIZE:
+    {
       break;
-
-    // SYS_READ
-    case 8:
+    }
+    case SYS_READ:
+    {
       break;
+    }
 
-    // SYS_WRITE
-    case 9:
+    case SYS_WRITE:
     {
       int *fd_addr = f->esp + 4;
       int *buff_addr = f->esp + 8;
@@ -94,22 +158,25 @@ syscall_handler (struct intr_frame *f)
       f->eax = write (*fd_addr, *buff_addr, *buff_size);
     }
 
-    // SYS_SEEK
-    case 10:
+    case SYS_SEEK:
+    {
       break;
+    }
 
-    // SYS_TELL
-    case 11:
+    case SYS_TELL:
+    {
       break;
+    }
 
-    // SYS_CLOSE
-    case 12:
+    case SYS_CLOSE:
+    {
       break;
-      
+    }
+
     // Unhandled case
     default:
       break;
-    }
+  }
   thread_yield ();
 }
 
@@ -150,15 +217,25 @@ wait (int pid /* Should be pid_t?? */)
 bool 
 create (const char *file, unsigned initial_size)
 {
-  // TODO
-  return 0;
+  /*
+    - Validate file name?
+    - See if a such file already exists?
+    - Is there enough room on disk to create it?
+  */
+  return filesys_create(file, initial_size);
 }
 
 bool 
 remove (const char *file)
 {
-  // TODO
-  return 0;
+  /* 
+    - Validate file name?
+    - Are there other processes with this fd open?
+    - Is someone writing to it?
+    - Does the calling process think it's removed if this returns
+      but another process still has it open? Should that be an error?
+  */
+  return filesys_remove(file);
 }
 
 int 
