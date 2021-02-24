@@ -29,8 +29,7 @@ void seek (int fd, unsigned position);
 unsigned tell (int fd);
 
 // Synchronization variables
-struct lock create_lock;
-struct lock remove_lock;
+struct lock modification_lock;
 
 void
 syscall_init (void) 
@@ -38,8 +37,7 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   
   // Initialize locks
-  lock_init(&create_lock);
-  lock_init(&remove_lock);
+  lock_init(&modification_lock);
 }
 
 static void
@@ -101,10 +99,10 @@ syscall_handler (struct intr_frame *f)
       {
         exit(-1);
       }
-      
-      lock_acquire(&create_lock);
+
+      lock_acquire(&modification_lock);
       f->eax = create(file_name, *file_size);
-      lock_release(&create_lock);
+      lock_release(&modification_lock);
 
       break;
     }
@@ -129,9 +127,9 @@ syscall_handler (struct intr_frame *f)
         exit(-1);
       }
 
-      lock_acquire(&remove_lock);
+      lock_acquire(&modification_lock);
       f->eax = remove(file_name);
-      lock_release(&remove_lock);
+      lock_release(&modification_lock);
 
       break;
     }
