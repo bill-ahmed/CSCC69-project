@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -8,7 +9,6 @@
 #include "threads/synch.h"
 #include "process.h"
 #include "pagedir.h"
-#include <string.h>
 
 static void syscall_handler (struct intr_frame *);
 
@@ -31,7 +31,10 @@ int write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);
 
-// Helper methods
+
+// Helper prototypes
+void* get_stack_arg (void *esp, int offset);
+void exit_if_null (void *ptr);
 void validate_user_address (void *addr);
 void validate_buffer_addr (void *buffer, int size);
 
@@ -102,11 +105,11 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_CREATE:
     {
-      int *string_buffer_addr = f->esp + 4;
+      int *string_buffer_addr = (int*) get_stack_arg (f->esp, 4);
       validate_user_address (string_buffer_addr);
 
       void *file_name = *string_buffer_addr;
-      int *file_size = f->esp + 8;
+      int *file_size = (int *) get_stack_arg (f->esp, 8);
 
       validate_user_address (file_name);
       validate_user_address (file_size);
@@ -114,31 +117,42 @@ syscall_handler (struct intr_frame *f)
       lock_acquire(&modification_lock);
       f->eax = create(file_name, *file_size);
       lock_release(&modification_lock);
-
       break;
     }
       
     case SYS_REMOVE:
     {
-      int *string_buffer_addr = f->esp + 4;
+      int *string_buffer_addr = (int*) get_stack_arg (f->esp, 4);
       validate_user_address (string_buffer_addr);
 
       void *file_name = *string_buffer_addr;
       validate_user_address (file_name);
 
-      lock_acquire(&modification_lock);
-      f->eax = remove(file_name);
-      lock_release(&modification_lock);
-
+      lock_acquire (&modification_lock);
+      f->eax = remove (file_name);
+      lock_release (&modification_lock);
       break;
     }
       
     case SYS_OPEN:
     {
+      int *name_buffer_ptr = (int*) get_stack_arg (f->esp, 4);
+      validate_user_address (name_buffer_ptr);
+
+      void *file_name = *name_buffer_ptr;
+      validate_user_address (file_name);
+
+      // Anyone can open the file at the same time to read
+      f->eax = open (file_name);
       break;
     }
     case SYS_FILESIZE:
     {
+      int *fd = (int*) get_stack_arg (f->esp, 4);
+      validate_user_address(fd);
+
+      if (*fd < 2) exit (-1);
+      f->eax = filesize (*fd);
       break;
     }
     case SYS_READ:
@@ -174,6 +188,11 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_CLOSE:
     {
+      int *fd = (int*) get_stack_arg (f->esp, 4);
+      validate_user_address (fd);
+
+      // No need to synchronize since fds are process dependent.
+      close (*fd);
       break;
     }
 
@@ -184,6 +203,17 @@ syscall_handler (struct intr_frame *f)
 }
 
 /** Helper methods **/
+void*
+get_stack_arg (void *esp, int offset) 
+{
+  return esp + offset; 
+}
+
+void
+exit_if_null (void *ptr) 
+{
+  if (ptr == NULL) exit (-1);
+}
 
 /* Checks that addr belongs to current user space.
    If it does, returns real physical address.
@@ -237,7 +267,7 @@ exit (int status)
 {
   // TODO: return status of program to parent!
   printf ("%s: exit(%d)\n", thread_current ()->process_name, status);
-  thread_current()->exit_status = status;
+  thread_current ()->exit_status = status;
   thread_exit ();
 }
 
@@ -288,7 +318,7 @@ create (const char *file, unsigned initial_size)
     - See if a such file already exists?
     - Is there enough room on disk to create it?
   */
-  return filesys_create(file, initial_size);
+  return filesys_create (file, initial_size);
 }
 
 bool 
@@ -301,28 +331,42 @@ remove (const char *file)
     - Does the calling process think it's removed if this returns
       but another process still has it open? Should that be an error?
   */
-  return filesys_remove(file);
+  return filesys_remove (file);
 }
 
-int 
-open (const char *file)
+int
+open (const char *file_name)
 {
-  // TODO
-  return 0;
+  const char* empty = "";
+  if (strcmp(file_name, empty) == 0)
+    return -1;
+
+  struct file *file = filesys_open(file_name);
+  
+  if (file == NULL)
+    return -1;
+
+  return thread_get_next_descriptor (file);
 }
 
 void 
 close (int fd)
-{
-  // TODO
+{ 
+  exit_if_null (fd);
+  struct file* file = thread_get_file_by_fd (fd);
+  exit_if_null (file);
+
+  thread_remove_descriptor (fd);
+  file_close (file);
   return 0;
 }
 
 int 
 filesize (int fd)
 {
-  // TODO
-  return 0;
+  struct file *file = thread_get_file_by_fd (fd);
+  exit_if_null (file);
+  return file_length (file);
 }
 
 int 

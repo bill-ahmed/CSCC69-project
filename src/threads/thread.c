@@ -13,6 +13,7 @@
 #include "threads/vaddr.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -476,6 +477,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
+  // Initialize all file descritors to point to nothing.
+  memset (t->open_descriptors, NULL, sizeof (struct file *) * THREAD_MAX_FILES);
   list_init (&t->child_threads);
   sema_init (&t->child_exec_status, 0);
 
@@ -620,3 +623,58 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+/* Get's the next available file descriptor and associates a file 
+   with that file descriptor. Assumes file is a proper file pointer. */
+int 
+thread_get_next_descriptor (struct file *file)
+{
+  struct thread *t = thread_current ();
+
+  // Find lowest NULL index to save file pointer to.
+  int index = 0;
+  for (;t->open_descriptors[index] != NULL && index < THREAD_MAX_FILES; index++);
+
+  // Max number of file descriptors already open for this thread
+  if (index == THREAD_MAX_FILES)
+  {
+    printf ("ERROR: Max number of files already open for this process");
+    exit (-1);
+  }
+
+  t->open_descriptors[index] = file;
+
+  // FD's 0 and 1 are reserved for I/O so we offset and return (index + 2)
+  return index + 2;
+}
+
+/* Gets a file pointer by a thread's file descriptor of that file */
+struct file*
+thread_get_file_by_fd (int fd) 
+{
+  if (fd < 2 || fd >= THREAD_MAX_FILES + 2)
+    exit(-1);
+
+  // There is an internal offset of 2 because FDs 0 and 1 are reserved for I/O
+  return thread_current ()->open_descriptors[fd - 2];
+}
+
+void 
+thread_close_all_descriptors ()
+{
+  struct thread *t = thread_current ();
+  for (int index = 0; index < THREAD_MAX_FILES; index++) 
+  {
+    // Will do nothing if file pointer at index is NULL.
+    file_close (t->open_descriptors[index]);
+  }
+}
+
+void 
+thread_remove_descriptor (int fd) 
+{
+  if (fd < 2 || fd >= THREAD_MAX_FILES + 2)
+    exit (-1);
+
+  thread_current ()->open_descriptors[fd - 2] = NULL;
+}
