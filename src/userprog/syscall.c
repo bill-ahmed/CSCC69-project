@@ -36,7 +36,6 @@ unsigned tell (int fd);
 void* get_stack_arg (void *esp, int offset);
 void exit_if_null (void *ptr);
 void validate_user_address (void *addr);
-void validate_buffer_addr (void *buffer, int size);
 
 // Synchronization variables
 struct lock modification_lock;
@@ -166,11 +165,9 @@ syscall_handler (struct intr_frame *f)
       int *buff_addr = f->esp + 8;
       int *buff_size = f->esp + 12;
 
-      validate_user_address (fd_addr);
+      validate_user_address (fd_addr);      
       validate_user_address (buff_addr);
       validate_user_address (buff_size);
-
-      validate_buffer_addr (buff_addr, *buff_size);
 
       f->eax = write (*fd_addr, *buff_addr, *buff_size);
       break;
@@ -230,18 +227,6 @@ validate_user_address (void *addr)
     exit(-1); 
 }
 
-/* Checks that buffer is valid and is entirely in user 
-   address space. Will exit with status -1 if invalid. */
-void
-validate_buffer_addr (void *buffer, int size)
-{
-  // printf(">> Buffer given: %s, size: %d\n", buffer, size);
-  for(int i = 0; i < size; i++)
-  {
-    validate_user_address (buffer + i);
-  }
-}
-
 /* Checks if given string is valid. Useful for stuff like exec
    where bad characters outside page boundary can be given. */
 void
@@ -279,7 +264,6 @@ exec (const char *cmd_line)
   struct thread *curr = thread_current ();
 
   validate_user_address (cmd_line);
-  validate_buffer_addr (cmd_line, strlen (cmd_line));
   
   validate_string_value (cmd_line, strlen (cmd_line));
 
@@ -379,7 +363,7 @@ read (int fd, void *buffer, unsigned size)
 /* Handle writing to console. */
 int
 write (int fd, const void *buffer, unsigned size)
-{  
+{
   if(fd == 1)
   {    
     // Write to console
@@ -388,8 +372,10 @@ write (int fd, const void *buffer, unsigned size)
   }
   else
   {
-    printf("ERROR: unknown file descripter for 'sys_write' of type: %d\n", fd);
-    return -1;
+    struct file* file = thread_get_file_by_fd (fd);
+    exit_if_null (file);
+
+    return file_write (file, buffer, size);
   }
 }
 
