@@ -287,7 +287,13 @@ thread_exit (void)
 
   // Make sure parent doesn't keep waiting
   if(curr->parent != NULL)
+  {
+    curr->parent->child_exit_status = curr->exit_status;
     curr->parent->waiting_on_child = false;
+  }
+
+  if(is_child_thread (curr))
+    list_remove (&curr->child_elem);
 
 #ifdef USERPROG
   process_exit ();
@@ -473,6 +479,8 @@ init_thread (struct thread *t, const char *name, int priority)
 
   // Initialize all file descritors to point to nothing.
   memset (t->open_descriptors, NULL, sizeof (struct file *) * THREAD_MAX_FILES);
+  list_init (&t->child_threads);
+  sema_init (&t->child_exec_status, 0);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -565,6 +573,14 @@ find_tread_by_tid (tid_t tid)
   }
 
   return NULL;
+}
+
+/* True iff t is a child thread created via call to exec*/
+bool 
+is_child_thread (struct thread *t)
+{
+  struct list_elem *elem = &t->child_elem;
+  return elem != NULL && elem->prev != NULL && elem->next != NULL; 
 }
 
 /* Schedules a new process.  At entry, interrupts must be off and
