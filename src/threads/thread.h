@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "filesys/file.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -23,6 +24,8 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+#define THREAD_MAX_FILES 128
 
 /* A kernel thread or user process.
 
@@ -81,30 +84,34 @@ typedef int tid_t;
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
 struct thread
-  {
-    /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    struct list_elem allelem;           /* List element for all threads list. */
+{
+   /* Owned by thread.c. */
+   tid_t tid;                          /* Thread identifier. */
+   enum thread_status status;          /* Thread state. */
+   char name[16];                      /* Name (for debugging purposes). */
+   uint8_t *stack;                     /* Saved stack pointer. */
+   int priority;                       /* Priority. */
+   struct list_elem allelem;           /* List element for all threads list. */
 
-    /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+   /* Shared between thread.c and synch.c. */
+   struct list_elem elem;              /* List element. */
 
-    char process_name[32];              /* The name given to process attached to this thread. */
-    bool waiting_on_child;              /* Whether this thread is waiting on another one or not. */
-    struct thread *parent;              /* Parent that might be waiting on this thread. */
+   char process_name[32];              /* The name given to process attached to this thread. */
+   bool waiting_on_child;              /* Whether this thread is waiting on another one or not. */
+   struct thread *parent;              /* Parent that might be waiting on this thread. */
+
+   /* Array of open file pointers. 
+      Index corresponds to (fd - 2) since 0 and 1 are reserved */
+   struct file *open_descriptors[THREAD_MAX_FILES]; 
 
 #ifdef USERPROG
-    /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+   /* Owned by userprog/process.c. */
+   uint32_t *pagedir;                  /* Page directory. */
 #endif
 
-    /* Owned by thread.c. */
-    unsigned magic;                     /* Detects stack overflow. */
-  };
+   /* Owned by thread.c. */
+   unsigned magic;                     /* Detects stack overflow. */
+};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -143,5 +150,10 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 struct thread * find_tread_by_tid (tid_t tid);
+
+int thread_get_next_descriptor (struct file *);
+struct file * thread_get_file_by_fd (int fd);
+void thread_close_all_descriptors ();
+void thread_remove_descriptor (int fd);
 
 #endif /* threads/thread.h */
