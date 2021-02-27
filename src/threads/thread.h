@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -94,7 +95,18 @@ struct thread
     struct list_elem elem;              /* List element. */
 
     char process_name[32];              /* The name given to process attached to this thread. */
+
     bool waiting_on_child;              /* Whether this thread is waiting on another one or not. */
+
+    int child_exec_loaded;              /* Whether or not child loaded executable. */
+    struct semaphore child_exec_status; /* Synchronization used to communicate if child loaded properly. */
+
+    int exit_status;                    /* Exit status of current thread. */
+    int child_exit_status;              /* Status of this thread's child upon exiting. */
+
+    struct list child_threads;          /* Keep track of all children spawned by current thread. */
+    struct list_elem child_elem;        /* List element for when this thread is child of another. */
+
     struct thread *parent;              /* Parent that might be waiting on this thread. */
 
 #ifdef USERPROG
@@ -141,6 +153,8 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+bool is_child_thread (struct thread *t);
 
 struct thread * find_tread_by_tid (tid_t tid);
 

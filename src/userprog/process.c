@@ -64,10 +64,29 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
 
+  struct thread *curr = thread_current ();
+
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
+  {
+    curr->exit_status = -1;
+    curr->parent->child_exec_loaded = -1;
+  }
+  else
+  {
+    curr->parent->child_exec_loaded = 1;
+  }
+  
+  // Yield after lifting semaphore to let parent know
+  // whether this child loaded properly or not.
+  sema_up (&curr->parent->child_exec_status);
+  thread_yield ();
+
+  // Run thread_exit after to ensure no weirdness happens
+  if(!success)
     thread_exit ();
+  
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -89,7 +108,7 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
   // Find the thread with given tid
   struct thread *child = find_tread_by_tid (child_tid);
@@ -100,10 +119,16 @@ process_wait (tid_t child_tid UNUSED)
     struct thread *curr = thread_current ();
     child->parent = curr;
 
-    // Tried using locks/semaphores here first...didn't seem to work :(
+    // printf(">> %s will wait on child: %s - %d\n", curr->name, child->name, child->tid);
+
     curr->waiting_on_child = true;
 
     while(curr->waiting_on_child) { thread_yield (); }
+    return thread_current()->child_exit_status;
+  }
+  else
+  {
+    return -1;
   }
 }
 

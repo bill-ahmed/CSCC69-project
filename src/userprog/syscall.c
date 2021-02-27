@@ -6,6 +6,9 @@
 #include "threads/vaddr.h"
 #include "filesys/filesys.h"
 #include "threads/synch.h"
+#include "process.h"
+#include "pagedir.h"
+#include <string.h>
 
 static void syscall_handler (struct intr_frame *);
 
@@ -28,6 +31,10 @@ int write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);
 
+// Helper methods
+void validate_user_address (void *addr);
+void validate_buffer_addr (void *buffer, int size);
+
 // Synchronization variables
 struct lock modification_lock;
 
@@ -42,6 +49,7 @@ syscall_init (void)
 
 static void
 syscall_handler (struct intr_frame *f) 
+
 {
   /**
    * TODO: probably want to check memory is initialized 
@@ -53,52 +61,55 @@ syscall_handler (struct intr_frame *f)
     // Throw invalid pointer exception
   }
 
+  if(is_kernel_vaddr (sys_call_num))
+    exit(-1);
+
   switch (*sys_call_num)
   {
     case SYS_HALT:
     {
+      halt ();
       break;
     }
     
     case SYS_EXIT:
     {
       int *exit_code = f->esp + 4;
+      
       exit (*exit_code);
+      break;
     }
 
     case SYS_EXEC:
     {
+      int *exec_file_addr = f->esp + 4;
+      validate_user_address (exec_file_addr);
+
+      void *file_name = *exec_file_addr;
+
+      f->eax = exec (file_name);
       break;
     }
 
     case SYS_WAIT:
     {
+      int *pid_addr = f->esp + 4;
+      validate_user_address (pid_addr);
+
+      f->eax = wait (*pid_addr);
       break;
     }
 
     case SYS_CREATE:
     {
       int *string_buffer_addr = f->esp + 4;
-
-      if (string_buffer_addr == NULL)
-      {
-        exit(-1);
-      }
-
-      // Can't remember which way this comparator goes
-      if (string_buffer_addr > PHYS_BASE)
-      {
-        // Throw a page fault.
-        // This is should pass the last test case (create-bad-ptr)
-      }
+      validate_user_address (string_buffer_addr);
 
       void *file_name = *string_buffer_addr;
       int *file_size = f->esp + 8;
 
-      if (file_size == NULL || file_name == NULL)
-      {
-        exit(-1);
-      }
+      validate_user_address (file_name);
+      validate_user_address (file_size);
 
       lock_acquire(&modification_lock);
       f->eax = create(file_name, *file_size);
@@ -110,22 +121,10 @@ syscall_handler (struct intr_frame *f)
     case SYS_REMOVE:
     {
       int *string_buffer_addr = f->esp + 4;
-
-      if (string_buffer_addr == NULL)
-      {
-        exit(-1);
-      }
-
-      if (string_buffer_addr > PHYS_BASE)
-      {
-        // Throw a page fault.
-      }
+      validate_user_address (string_buffer_addr);
 
       void *file_name = *string_buffer_addr;
-      if (file_name == NULL)
-      {
-        exit(-1);
-      }
+      validate_user_address (file_name);
 
       lock_acquire(&modification_lock);
       f->eax = remove(file_name);
@@ -153,7 +152,14 @@ syscall_handler (struct intr_frame *f)
       int *buff_addr = f->esp + 8;
       int *buff_size = f->esp + 12;
 
+      validate_user_address (fd_addr);
+      validate_user_address (buff_addr);
+      validate_user_address (buff_size);
+
+      validate_buffer_addr (buff_addr, *buff_size);
+
       f->eax = write (*fd_addr, *buff_addr, *buff_size);
+      break;
     }
 
     case SYS_SEEK:
@@ -175,11 +181,47 @@ syscall_handler (struct intr_frame *f)
     default:
       break;
   }
-  thread_yield ();
 }
 
 /** Helper methods **/
 
+/* Checks that addr belongs to current user space.
+   If it does, returns real physical address.
+   Will exit with status -1 if addr is invalid. */
+void
+validate_user_address (void *addr)
+{
+  if(addr == NULL || is_kernel_vaddr (addr))
+    exit (-1);
+
+  // Make sure address belongs to process' virtual address space,
+  // and has been mapped already.
+  if(!pagedir_get_page (thread_current()->pagedir, addr))
+    exit(-1); 
+}
+
+/* Checks that buffer is valid and is entirely in user 
+   address space. Will exit with status -1 if invalid. */
+void
+validate_buffer_addr (void *buffer, int size)
+{
+  // printf(">> Buffer given: %s, size: %d\n", buffer, size);
+  for(int i = 0; i < size; i++)
+  {
+    validate_user_address (buffer + i);
+  }
+}
+
+/* Checks if given string is valid. Useful for stuff like exec
+   where bad characters outside page boundary can be given. */
+void
+validate_string_value (char* str, int size)
+{
+  for(int i = 0; i < size; i++)
+  {
+    validate_user_address (str + i);
+  }
+}
 
 
 /** Implement system calls below!! **/
@@ -195,21 +237,47 @@ exit (int status)
 {
   // TODO: return status of program to parent!
   printf ("%s: exit(%d)\n", thread_current ()->process_name, status);
+  thread_current()->exit_status = status;
   thread_exit ();
 }
 
 int // Should be pid_t?? 
 exec (const char *cmd_line)
 {
-  // TODO
-  return 0;
+  int tid;
+  struct thread *child;
+  struct thread *curr = thread_current ();
+
+  validate_user_address (cmd_line);
+  validate_buffer_addr (cmd_line, strlen (cmd_line));
+  
+  validate_string_value (cmd_line, strlen (cmd_line));
+
+  tid = process_execute (cmd_line);
+
+  child = find_tread_by_tid (tid);
+  child->parent = curr;
+  list_push_back (&curr->child_threads, &curr->child_elem);
+
+  sema_down (&curr->child_exec_status);
+  
+  // Exec failed to load for some reason for child
+  if(curr->child_exec_loaded == -1)
+    return -1;
+
+  return tid == TID_ERROR ? -1 : tid;
 }
 
 int 
 wait (int pid /* Should be pid_t?? */)
 {
   // TODO
-  return 0;
+  if(pid == TID_ERROR)
+  {
+    return -1;
+  }
+
+  return process_wait (pid);
 }
 
 bool 
