@@ -41,7 +41,7 @@ void exit_if_null (void *ptr);
 void validate_user_address (void *addr);
 
 // Synchronization variables
-struct lock modification_lock;
+struct lock filesys_lock;
 
 void
 syscall_init (void) 
@@ -49,7 +49,7 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   
   // Initialize locks
-  lock_init(&modification_lock);
+  lock_init(&filesys_lock);
 }
 
 static void
@@ -89,7 +89,9 @@ syscall_handler (struct intr_frame *f)
 
       void *file_name = *exec_file_addr;
 
+      lock_acquire(&filesys_lock);
       f->eax = exec (file_name);
+      lock_release(&filesys_lock);
       break;
     }
 
@@ -113,9 +115,9 @@ syscall_handler (struct intr_frame *f)
       validate_user_address (file_name);
       validate_user_address (file_size);
 
-      lock_acquire(&modification_lock);
+      lock_acquire(&filesys_lock);
       f->eax = create(file_name, *file_size);
-      lock_release(&modification_lock);
+      lock_release(&filesys_lock);
       break;
     }
       
@@ -127,9 +129,9 @@ syscall_handler (struct intr_frame *f)
       void *file_name = *string_buffer_addr;
       validate_user_address (file_name);
 
-      lock_acquire (&modification_lock);
+      lock_acquire (&filesys_lock);
       f->eax = remove (file_name);
-      lock_release (&modification_lock);
+      lock_release (&filesys_lock);
       break;
     }
       
@@ -351,8 +353,10 @@ open (const char *file_name)
   if (strcmp(file_name, empty) == 0)
     return -1;
 
+  lock_acquire(&filesys_lock);
   struct file *file = filesys_open(file_name);
-  
+  lock_release(&filesys_lock);
+
   if (file == NULL)
     return -1;
 
@@ -400,7 +404,10 @@ read (int fd, void *buffer, unsigned size)
     struct file *file = thread_get_file_by_fd (fd);
     exit_if_null (file);
 
-    return file_read (file, buffer, size);
+    lock_acquire(&filesys_lock);
+    off_t bytes_read = file_read (file, buffer, size);
+    lock_release(&filesys_lock);
+    return bytes_read;
   }
 
 }
@@ -428,11 +435,9 @@ write (int fd, const void *buffer, unsigned size)
 
     // Make sure we're the only one 
     // writing to this file.
-    lock_acquire (&modification_lock);
-
+    lock_acquire (&filesys_lock);
     new_size = file_write (file, buffer, size);
-    lock_release (&modification_lock);
-
+    lock_release (&filesys_lock);
     return new_size;
   }
 }
@@ -443,9 +448,9 @@ seek (int fd, unsigned position)
   struct file* file = thread_get_file_by_fd (fd);
   exit_if_null (file);
 
-  lock_acquire (&modification_lock);
+  lock_acquire (&filesys_lock);
   file_seek (file, position);
-  lock_release (&modification_lock);
+  lock_release (&filesys_lock);
 }
 
 unsigned 
