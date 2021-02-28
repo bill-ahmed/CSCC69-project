@@ -8,9 +8,9 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Bilal Ahmed <bill.ahmed@mail.utoronto.ca>
+Tanner Bergeron tanner.bergeron@mail.utoronto.ca
+Tanaan Karunakaran tanaan.karunakaran@mail.utoronto.ca
 
 ---- PRELIMINARIES ----
 
@@ -30,19 +30,60 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+// A limit to the number of arguments to a binary execution
+static int MAX_ARG_SIZE = 128;
+
+// Additions to struct thread
+char process_name[32];              /* The name given to process attached to this thread. */
+bool waiting_on_child;              /* Whether this thread is waiting on another one or not. */
+int child_exec_loaded;              /* Whether or not child loaded executable. */
+struct semaphore child_exec_status; /* Synchronization used to communicate if child loaded properly. */
+int exit_status;                    /* Exit status of current thread. */
+int child_exit_status;              /* Status of this thread's child upon exiting. */
+struct list child_threads;          /* Keep track of all children spawned by current thread. */
+struct list_elem child_elem;        /* List element for when this thread is child of another. */
+struct thread *parent;              /* Parent that might be waiting on this thread. */
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
+Argument parsing happens very closely to the way it was described in the handout. It starts in the 
+call to “setup_stack(...)”, and if allocating user page is successful (line 502), we continue. 
+
+This function was modified to accept two additional parameters: “int argc” and “char **argv”. 
+These are created in “load(...)” using “strtok_r” to get all arguments (including file name) 
+as well as a counter to keep track of the number of arguments (separated by any number of 
+white space characters).
+
+Initially, the arguments are in the wrong order (left-to-right). To account for this, we 
+work backwards in “setup_stack” (since we’re given argc, this is trivial) and copy the 
+contents onto the stack, and decrement stack pointer accordingly. Although it is not necessary 
+to copy the argument values themselves in this order, it makes copying the addresses to each 
+arg easier as well (in “STEP 4”, we also work backwards from argc). This helps ensure that the 
+arguments are in the correct order for when the program executes. We also set a limit MAX_ARG_SIZE 
+for the number of arguments allowed as well as their lengths, and this limit was chosen such that 
+it fits in the 4kb page limit given to us (violating this limit exits the process with status -1).
+
+
+
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
 
+According to the official man pages of “strtok_r”, this version is “reentrant”, meaning that it 
+can resume even after it’s been interrupted (since we pass in our own pointer, and that pointer 
+is updated in each iteration of the for loop). This ensures that something like a timer interrupt 
+will not cause issues between multiple threads trying to run “process_start” (since this calls 
+“load”, where arg parsing via strtok_r is done).
+
 >> A4: In Pintos, the kernel separates commands into a executable name
 >> and arguments.  In Unix-like systems, the shell does this
 >> separation.  Identify at least two advantages of the Unix approach.
+
+
 
                  SYSTEM CALLS
                  ============
@@ -53,6 +94,15 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+// Limit a thread to have at most 128 open descriptors.
+#define THREAD_MAX_FILES 128
+
+// A lock to stop multiple calls to a modification of a file.
+struct lock modification_lock;
+
+// Changes to struct thread
+struct file *open_descriptors[THREAD_MAX_FILES]; /* Array of open file pointers */
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
@@ -61,6 +111,12 @@ FirstName LastName <email@domain.example>
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+
+Inside each system call we validate the stack pointer (esp) and calculate the addresses of remaining 
+arguments, based on how many we expect there to be. More details regarding this are provided in B6. 
+To return the value to the caller, we store the result in eax parameter of the interrupt stack frame. 
+Since we decided to follow the first method of checking syscall arguments, most of our code was 
+relating to error checking. 
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -71,6 +127,11 @@ FirstName LastName <email@domain.example>
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
+The “wait” system call validates the given PID, and calls process_wait directly. After that, process_wait 
+will keep track of which child it is waiting for, and will continually yield until that specific child 
+has exited. During the child exiting, it will give its return value to the parent. Upon terminating, 
+the parent process is free to execute and will immediately return the child’s exit status.
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -86,6 +147,26 @@ FirstName LastName <email@domain.example>
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+The strategy we adopted was to abstract all validations and error handling into their own functions. We 
+noticed that all of the system calls had common ground when checking their values. With this in mind, 
+we gathered the pointers to where each data was and passed that along to “validate_user_address”. This 
+helper method would go through many checks and exit with status of -1 if even a single check failed. 
+
+Most of this error handling was called inside the large “switch” statement in syscall.c, although in some 
+cases we were able to abstract behind the syscall itself. An example of such an abstraction would be with 
+the various read/write operations to the file system. These operations were supported by calls to 
+“thread_get_file_by_fd” and “exit_if_null” which allowed us to exit before attempting a invalid action. We 
+also found that buffers can be tricky to validate. To help combat this, we made use of two methods: a call 
+to “validate_string_value” in addition to dereferencing the buffer address and ensuring it was within user 
+page boundaries via validate_user_address.
+
+An example of these strategies being used would be in the system call “SYS_WRITE”. We start by calculating 
+the address of each argument we need, then validating them via “validate_user_address”. At this point we 
+are confident the user memory exists and is within page boundaries, so we dereference them and call 
+“write(...)”. In the case where we are writing to a file, “thread_get_file_by_fd” and “exit_if_null” are 
+used to safeguard writing to invalid files and the acquiring of “modification_lock” ensures only one thread 
+can write to the file system at all. 
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
@@ -93,12 +174,25 @@ FirstName LastName <email@domain.example>
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
 
+Our code ensures this by downing a semaphore in exec, and waiting on the child to up it (the semaphore is 
+passed by reference) inside the call to start_process. Regardless of what the load status is, the child will 
+update its parent with an integer value denoting the status, and up the semaphore it was given. It then immediately 
+yields to let the parent return the exec status (TID if successfully, -1 otherwise). Further, the child thread calls 
+thread_exit if not successful, ensuring that its behaviour is consistent with what is expected.
+
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
 >> calls wait(C) before C exits?  After C exits?  How do you ensure
 >> that all resources are freed in each case?  How about when P
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
+
+The function process_wait was implemented such that it checks if the child is still running and in the ready_thread 
+list. If so, then the parent will continually yield until the child is done. If the child had already exited before 
+a call to “wait”, then our helper method would return NULL and the parent would continue executing normally. If P 
+terminates before C, then C will continue running until it is finished, and will free up its resources via a call 
+to “thread_exit” and “process_exit”. The same steps apply if P terminates after C.
+
 
 ---- RATIONALE ----
 
@@ -110,6 +204,9 @@ FirstName LastName <email@domain.example>
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+N/A, we did not change it.
+
 
                SURVEY QUESTIONS
                ================
@@ -134,3 +231,4 @@ the quarter.
 >> students, either for future quarters or the remaining projects?
 
 >> Any other comments?
+
