@@ -99,7 +99,7 @@ struct thread
 
    char process_name[32];              /* The name given to process attached to this thread. */
 
-   bool waiting_on_child;              /* Whether this thread is waiting on another one or not. */
+   struct thread *waiting_on_child;              /* Whether this thread is waiting on another one or not. */
 
    int child_exec_loaded;              /* Whether or not child loaded executable. */
    struct semaphore child_exec_status; /* Synchronization used to communicate if child loaded properly. */

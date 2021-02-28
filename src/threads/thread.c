@@ -289,7 +289,11 @@ thread_exit (void)
   if(curr->parent != NULL)
   {
     curr->parent->child_exit_status = curr->exit_status;
-    curr->parent->waiting_on_child = false;
+
+    // Only the child the parent is waiting on can 
+    // allow it to continue
+    if(curr->parent->waiting_on_child == curr)
+      curr->parent->waiting_on_child = NULL;
   }
 
   // Allow writing to this executable now

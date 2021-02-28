@@ -22,7 +22,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static int MAX_ARG_SIZE = 128;
+static int MAX_ARG_SIZE = 64;
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -123,9 +123,7 @@ process_wait (tid_t child_tid)
     struct thread *curr = thread_current ();
     child->parent = curr;
 
-    // printf(">> %s will wait on child: %s - %d\n", curr->name, child->name, child->tid);
-
-    curr->waiting_on_child = true;
+    curr->waiting_on_child = child;
 
     while(curr->waiting_on_child) { thread_yield (); }
     return thread_current()->child_exit_status;
@@ -270,6 +268,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
   {
+    if(strlen(token) > MAX_ARG_SIZE || count >= MAX_ARG_SIZE)
+    {
+      exit (-1);
+      break;
+    }
     args[count] = token;
     count++;
   }
