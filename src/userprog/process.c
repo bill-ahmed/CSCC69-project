@@ -66,17 +66,21 @@ start_process (void *file_name_)
 
   struct thread *curr = thread_current ();
 
-  /* If load failed, quit. */
-  palloc_free_page (file_name);
+  
   if (!success) 
   {
     curr->exit_status = -1;
     curr->parent->child_exec_loaded = -1;
   }
   else
-  {
+  {    
+    curr->executable_file = filesys_open (file_name);
+    file_deny_write (curr->executable_file);
+    
     curr->parent->child_exec_loaded = 1;
   }
+  /* If load failed, quit. */
+  palloc_free_page (file_name);
   
   // Yield after lifting semaphore to let parent know
   // whether this child loaded properly or not.

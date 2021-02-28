@@ -292,6 +292,10 @@ thread_exit (void)
     curr->parent->waiting_on_child = false;
   }
 
+  // Allow writing to this executable now
+  if(curr->executable_file)
+    file_close (curr->executable_file);
+
   if(is_child_thread (curr))
     list_remove (&curr->child_elem);
 

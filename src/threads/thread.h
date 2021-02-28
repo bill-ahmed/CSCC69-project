@@ -115,6 +115,7 @@ struct thread
    /* Array of open file pointers. 
       Index corresponds to (fd - 2) since 0 and 1 are reserved */
    struct file *open_descriptors[THREAD_MAX_FILES];
+   struct file *executable_file;      /* This thread's executable file. */
 
 #ifdef USERPROG
    /* Owned by userprog/process.c. */
