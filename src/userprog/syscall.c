@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <syscall-nr.h>
+#include "devices/input.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -9,6 +10,8 @@
 #include "threads/synch.h"
 #include "process.h"
 #include "pagedir.h"
+
+#define PAGE_BOUNDARY (void *) 0x08048000
 
 static void syscall_handler (struct intr_frame *);
 
@@ -57,14 +60,9 @@ syscall_handler (struct intr_frame *f)
    * TODO: probably want to check memory is initialized 
    *       before trying to dereference it
   */
+  validate_user_address (f->esp);
+
   int *sys_call_num = f->esp;
-
-  if (sys_call_num == NULL) {
-    // Throw invalid pointer exception
-  }
-
-  if(is_kernel_vaddr (sys_call_num))
-    exit(-1);
 
   switch (*sys_call_num)
   {
@@ -77,6 +75,7 @@ syscall_handler (struct intr_frame *f)
     case SYS_EXIT:
     {
       int *exit_code = f->esp + 4;
+      validate_user_address (f->esp + 4);
       
       exit (*exit_code);
       break;
@@ -86,6 +85,7 @@ syscall_handler (struct intr_frame *f)
     {
       int *exec_file_addr = f->esp + 4;
       validate_user_address (exec_file_addr);
+      validate_user_address ((void*) *exec_file_addr);
 
       void *file_name = *exec_file_addr;
 
@@ -156,6 +156,16 @@ syscall_handler (struct intr_frame *f)
     }
     case SYS_READ:
     {
+      int *fd_addr = f->esp + 4;
+      int *buff_addr = f->esp + 8;
+      int *buff_size = f->esp + 12;
+      
+      validate_user_address (fd_addr);      
+      validate_user_address (buff_addr);
+      validate_user_address ((void*) *buff_addr);
+      validate_user_address (buff_size);
+
+      f->eax = read (*fd_addr, *buff_addr, *buff_size);
       break;
     }
 
@@ -167,6 +177,7 @@ syscall_handler (struct intr_frame *f)
 
       validate_user_address (fd_addr);      
       validate_user_address (buff_addr);
+      validate_user_address ((void*) *buff_addr);
       validate_user_address (buff_size);
 
       f->eax = write (*fd_addr, *buff_addr, *buff_size);
@@ -175,11 +186,22 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_SEEK:
     {
+      int *fd_addr = f->esp + 4;
+      int *position = f->esp + 8;
+
+      validate_user_address (fd_addr);      
+      validate_user_address (position);
+
+      seek (*fd_addr, *position); // TODO Make unsigned
       break;
     }
 
     case SYS_TELL:
     {
+      int *fd_addr = f->esp + 4;
+      validate_user_address (fd_addr);
+
+      f->eax = tell (*fd_addr);
       break;
     }
 
@@ -218,8 +240,11 @@ exit_if_null (void *ptr)
 void
 validate_user_address (void *addr)
 {
-  if(addr == NULL || is_kernel_vaddr (addr))
+  if(addr == NULL || is_kernel_vaddr (addr) || addr < PAGE_BOUNDARY)
+  {
     exit (-1);
+    return;
+  }
 
   // Make sure address belongs to process' virtual address space,
   // and has been mapped already.
@@ -356,8 +381,27 @@ filesize (int fd)
 int 
 read (int fd, void *buffer, unsigned size)
 {
-  // TODO
-  return 0;
+  // If reading from STDIN
+  if(fd == 0)
+  {
+    uint8_t *result = (uint8_t *) buffer;
+    
+    for(int i = 0; i < size; i++)
+    {
+      // Read from keyboard and store result in buffer
+      result[i] = input_getc ();
+    }
+
+    return size;
+  }
+  else
+  {
+    struct file *file = thread_get_file_by_fd (fd);
+    exit_if_null (file);
+
+    return file_read (file, buffer, size);
+  }
+
 }
 
 /* Handle writing to console. */
@@ -372,22 +416,42 @@ write (int fd, const void *buffer, unsigned size)
   }
   else
   {
+    int new_size;
+
     struct file* file = thread_get_file_by_fd (fd);
     exit_if_null (file);
 
-    return file_write (file, buffer, size);
+    // Check if we're trying to write 
+    // to ourselves, or any of our children!
+
+
+    // Make sure we're the only one 
+    // writing to this file.
+    lock_acquire (&modification_lock);
+
+    new_size = file_write (file, buffer, size);
+    lock_release (&modification_lock);
+
+    return new_size;
   }
 }
 
 void 
 seek (int fd, unsigned position)
 {
-  // TODO
+  struct file* file = thread_get_file_by_fd (fd);
+  exit_if_null (file);
+
+  lock_acquire (&modification_lock);
+  file_seek (file, position);
+  lock_release (&modification_lock);
 }
 
 unsigned 
 tell (int fd)
 {
-  // TODO
-  return 0;
+  struct file* file = thread_get_file_by_fd (fd);
+  exit_if_null (file);
+
+  return file_tell (file);
 }
