@@ -564,7 +564,7 @@ thread_schedule_tail (struct thread *prev)
 }
 /* Find a thread with given tid, NULL if it doesn't exist */
 struct thread *
-find_tread_by_tid (tid_t tid)
+find_thread_by_tid (tid_t tid)
 {
   struct list_elem *e;
   for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next(e))

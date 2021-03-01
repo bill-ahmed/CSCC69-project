@@ -56,10 +56,7 @@ static void
 syscall_handler (struct intr_frame *f) 
 
 {
-  /**
-   * TODO: probably want to check memory is initialized 
-   *       before trying to dereference it
-  */
+
   validate_user_address (f->esp);
 
   int *sys_call_num = f->esp;
@@ -194,7 +191,7 @@ syscall_handler (struct intr_frame *f)
       validate_user_address (fd_addr);      
       validate_user_address (position);
 
-      seek (*fd_addr, *position); // TODO Make unsigned
+      seek (*fd_addr, *position);
       break;
     }
 
@@ -266,8 +263,6 @@ validate_string_value (char* str, int size)
 }
 
 
-/** Implement system calls below!! **/
-
 void 
 halt (void)
 {
@@ -277,7 +272,6 @@ halt (void)
 void
 exit (int status)
 {
-  // TODO: return status of program to parent!
   printf ("%s: exit(%d)\n", thread_current ()->process_name, status);
   thread_current ()->exit_status = status;
   thread_exit ();
@@ -296,7 +290,7 @@ exec (const char *cmd_line)
 
   tid = process_execute (cmd_line);
 
-  child = find_tread_by_tid (tid);
+  child = find_thread_by_tid (tid);
   sema_down (&curr->child_exec_status);
   
   // Exec failed to load for some reason for child
@@ -308,7 +302,7 @@ exec (const char *cmd_line)
 }
 
 int 
-wait (int pid /* Should be pid_t?? */)
+wait (int pid)
 {
   return process_wait (pid);
 }
@@ -316,24 +310,12 @@ wait (int pid /* Should be pid_t?? */)
 bool 
 create (const char *file, unsigned initial_size)
 {
-  /*
-    - Validate file name?
-    - See if a such file already exists?
-    - Is there enough room on disk to create it?
-  */
   return filesys_create (file, initial_size);
 }
 
 bool 
 remove (const char *file)
 {
-  /* 
-    - Validate file name?
-    - Are there other processes with this fd open?
-    - Is someone writing to it?
-    - Does the calling process think it's removed if this returns
-      but another process still has it open? Should that be an error?
-  */
   return filesys_remove (file);
 }
 
@@ -419,10 +401,6 @@ write (int fd, const void *buffer, unsigned size)
 
     struct file* file = thread_get_file_by_fd (fd);
     exit_if_null (file);
-
-    // Check if we're trying to write 
-    // to ourselves, or any of our children!
-
 
     // Make sure we're the only one 
     // writing to this file.

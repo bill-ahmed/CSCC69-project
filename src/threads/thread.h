@@ -168,7 +168,7 @@ int thread_get_load_avg (void);
 
 bool is_child_thread (struct thread *t);
 
-struct thread * find_tread_by_tid (tid_t tid);
+struct thread * find_thread_by_tid (tid_t tid);
 
 int thread_get_next_descriptor (struct file *);
 struct file * thread_get_file_by_fd (int fd);

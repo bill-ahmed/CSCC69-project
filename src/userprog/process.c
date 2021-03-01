@@ -51,7 +51,7 @@ process_execute (const char *file_name)
   }
   else
   {
-    child = find_tread_by_tid (tid);
+    child = find_thread_by_tid (tid);
     child->parent = curr;
     list_push_back (&curr->child_threads, &child->child_elem);
   }
