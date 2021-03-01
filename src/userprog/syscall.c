@@ -297,9 +297,6 @@ exec (const char *cmd_line)
   tid = process_execute (cmd_line);
 
   child = find_tread_by_tid (tid);
-  child->parent = curr;
-  list_push_back (&curr->child_threads, &curr->child_elem);
-
   sema_down (&curr->child_exec_status);
   
   // Exec failed to load for some reason for child
@@ -313,12 +310,6 @@ exec (const char *cmd_line)
 int 
 wait (int pid /* Should be pid_t?? */)
 {
-  // TODO
-  if(pid == TID_ERROR)
-  {
-    return -1;
-  }
-
   return process_wait (pid);
 }
 

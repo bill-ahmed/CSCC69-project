@@ -284,24 +284,18 @@ thread_exit (void)
   ASSERT (!intr_context ());
 
   struct thread *curr = thread_current ();
-
-  // Make sure parent doesn't keep waiting
-  if(curr->parent != NULL)
-  {
-    curr->parent->child_exit_status = curr->exit_status;
-
-    // Only the child the parent is waiting on can 
-    // allow it to continue
-    if(curr->parent->waiting_on_child == curr)
-      curr->parent->waiting_on_child = NULL;
-  }
+  curr->is_done = true;
 
   // Allow writing to this executable now
   if(curr->executable_file)
     file_close (curr->executable_file);
 
-  if(is_child_thread (curr))
-    list_remove (&curr->child_elem);
+  // Make sure parent doesn't keep waiting
+  if(curr->parent != NULL)
+  {
+    curr->parent->child_exit_status = curr->exit_status;
+    sema_down (&curr->allow_exit_sema);
+  }
 
 #ifdef USERPROG
   process_exit ();
@@ -489,6 +483,7 @@ init_thread (struct thread *t, const char *name, int priority)
   memset (t->open_descriptors, NULL, sizeof (struct file *) * THREAD_MAX_FILES);
   list_init (&t->child_threads);
   sema_init (&t->child_exec_status, 0);
+  sema_init (&t->allow_exit_sema, 0);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -581,14 +576,6 @@ find_tread_by_tid (tid_t tid)
   }
 
   return NULL;
-}
-
-/* True iff t is a child thread created via call to exec*/
-bool 
-is_child_thread (struct thread *t)
-{
-  struct list_elem *elem = &t->child_elem;
-  return elem != NULL && elem->prev != NULL && elem->next != NULL; 
 }
 
 /* Schedules a new process.  At entry, interrupts must be off and

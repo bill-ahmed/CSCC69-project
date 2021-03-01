@@ -33,6 +33,8 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
+  struct thread *curr = thread_current ();
+  struct thread *child;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -44,7 +46,16 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
+  {
     palloc_free_page (fn_copy); 
+  }
+  else
+  {
+    child = find_tread_by_tid (tid);
+    child->parent = curr;
+    list_push_back (&curr->child_threads, &child->child_elem);
+  }
+    
   return tid;
 }
 
@@ -114,24 +125,51 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
+  struct list_elem *e;
+
   // Find the thread with given tid
-  struct thread *child = find_tread_by_tid (child_tid);
+  struct thread *child;
+  struct thread *curr = thread_current ();
 
-  // If child exists, wait until it exits
-  if(child)
+  if(list_empty (&curr->child_threads))
+    return -1;
+
+
+  // Check if child belongs to current thread
+  for (e = list_begin (&curr->child_threads); e != list_end (&curr->child_threads); e = list_next(e))
   {
-    struct thread *curr = thread_current ();
-    child->parent = curr;
+    child = list_entry (e, struct thread, child_elem);
 
+    if(child->tid == child_tid)
+      goto done;
+    
+    child = NULL;
+  }
+
+  // If child doesn't belong to process, error!
+  if(!child)
+    return -1;
+  
+  done:
+    // Only allow waiting on a given child ONCE
+    if(child->is_done)
+    {
+      list_remove (&child->child_elem);
+      sema_up (&child->allow_exit_sema);
+      return child->exit_status;
+    }
+
+    child->parent = curr;
     curr->waiting_on_child = child;
 
-    while(curr->waiting_on_child) { thread_yield (); }
-    return thread_current()->child_exit_status;
-  }
-  else
-  {
-    return -1;
-  }
+    // Until this child is done, wait for it
+    while(curr->waiting_on_child && !curr->waiting_on_child->is_done) {
+      thread_yield (); 
+    }
+    
+    list_remove (&child->child_elem);
+    sema_up (&child->allow_exit_sema);
+    return curr->waiting_on_child->exit_status;
 }
 
 /* Free the current process's resources. */
