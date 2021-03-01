@@ -1,6 +1,6 @@
              +--------------------------+
              | CSCC69                   |
-             | PROJECT 2: USER PROGRAMS	|
+             | PROJECT 2: USER PROGRAMS |
              | DESIGN DOCUMENT          |
              +--------------------------+
 
@@ -107,6 +107,8 @@ struct file *open_descriptors[THREAD_MAX_FILES]; /* Array of open file pointers 
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
 
+Each thread has an array of file descriptors that it uses to track it’s open files. Since we have limited a thread to THREAD_MAX_FILES open file descriptors, the kernel assigns the opened file to the corresponding smallest open index in the file descriptor array of the calling process. This makes it easy to lookup and give out file descriptors to threads independently. The array stores pointers to the files themselves. So thread->open_descriptors[15] would be the file associated with fd 17 (because we offset the fd by 2 since 0 and 1 are reserved). This lets multiple threads open the same file, and even more than once.
+
 ---- ALGORITHMS ----
 
 >> B3: Describe your code for reading and writing user data from the
@@ -114,7 +116,7 @@ struct file *open_descriptors[THREAD_MAX_FILES]; /* Array of open file pointers 
 
 Inside each system call we validate the stack pointer (esp) and calculate the addresses of remaining 
 arguments, based on how many we expect there to be. More details regarding this are provided in B6. 
-To return the value to the caller, we store the result in eax parameter of the interrupt stack frame. 
+To return the value to the caller, we store the result in (eax) parameter of the interrupt stack frame. 
 Since we decided to follow the first method of checking syscall arguments, most of our code was 
 relating to error checking. 
 
@@ -124,6 +126,10 @@ relating to error checking.
 >> (e.g. calls to pagedir_get_page()) that might result?  What about
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
+
+If the entire chunk is to be copied continuously, then the minimum number of calls to pagedir_get_page would be 1, since we can check the memory address at the top and the size of what we’re trying to copy to know if it will fit in memory. If each byte were to be copied individually, then we would have a maximum of 4096 calls to pagedir_get_page because we would need to check whether the address of each byte fits in the thread’s page. 
+
+If the system call were to copy 2 bytes, it would also do at best 1 call to pagedir_get_page (like before, we calculate if it fits in memory), or a maximum of 2 calls if each byte is added one-by-one. There likely is room for improvement, as we were shown in lecture we can use various techniques to speed up the process of finding free memory, such as by using bitmaps or a doubly-linked-circular list of open pages. Using such a technique would let us quickly jump around within the page itself.
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
@@ -199,8 +205,14 @@ to “thread_exit” and “process_exit”. The same steps apply if P terminate
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+We chose the first method (validating the pointers and dereferencing them) because it made for an easier implementation. Anyone could follow the code and understand what was happening at each step, which also made it easier to debug when something went wrong. 
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
+
+The advantage is that it is quick, and thread dependent. Assigning a new fd to a thread is as easy as iterating over the thread fd array and returning the lowest index which doesn’t have a file pointer already assigned. This also means random opening and closing of fds which causes internal fragmentation of the array has no effect on the algorithm to give out fds. It will still just return the first open fd index.
+
+The disadvantage to this is each thread now has to be initialized with a large empty array of NULL file pointers and is limited to THREAD_MAX_FILES number of open files beyond the 2 open by the kernel for console and keyboard. This increases the size of the kernel stack quite a bit if there are many processes running.
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
@@ -231,4 +243,6 @@ the quarter.
 >> students, either for future quarters or the remaining projects?
 
 >> Any other comments?
+
+
 
