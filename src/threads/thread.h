@@ -121,10 +121,8 @@ struct thread
    struct file *open_descriptors[THREAD_MAX_FILES];
    struct file *executable_file;      /* This thread's executable file. */
 
-#ifdef USERPROG
    /* Owned by userprog/process.c. */
-   uint32_t *pagedir;                  /* Page directory. */
-#endif
+   uint32_t *pagedir; /* Page directory. */
 
    /* Owned by thread.c. */
    unsigned magic;                     /* Detects stack overflow. */

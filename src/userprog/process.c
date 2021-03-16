@@ -501,7 +501,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
+      // REPLACE THIS CALL WITH: frame_table_get_page(USER);
       uint8_t *kpage = palloc_get_page (PAL_USER);
+      
       if (kpage == NULL)
         return false;
 
@@ -516,6 +518,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable)) 
         {
+          // frame_table_free_page(kpage);
           palloc_free_page (kpage);
           return false; 
         }
