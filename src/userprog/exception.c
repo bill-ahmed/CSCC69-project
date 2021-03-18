@@ -234,7 +234,7 @@ page_fault (struct intr_frame *f)
          }  
       }
    }
-   // Instead of exiting, we must now handle faults by creating user pages
+ 
    if (!loaded_successfully) 
    {
       printf ("Page fault at %p: %s error %s page in %s context.\n",
