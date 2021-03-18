@@ -178,7 +178,7 @@ page_fault (struct intr_frame *f)
       if (spte != NULL)
       {
          /* We know this data exists somewhere, just have to find it */
-         if (!spte->in_swap)
+         if (spte->in_swap)
          {
             /* Swap into a frame */
             // loaded_successfully = swap_into_memory (spte);
