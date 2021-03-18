@@ -38,8 +38,6 @@ ft_allocate(enum palloc_flags flags)
                 2.1. Make sure to call pagedir_clear_page to free
                 that memeory from the user pool.
 
-                2.2. Remove that 
-
             3. Allocate a new page (like shown above) and push
             into frame list
         */
