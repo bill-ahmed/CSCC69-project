@@ -11,8 +11,6 @@
 #include "process.h"
 #include "pagedir.h"
 
-#define PAGE_BOUNDARY (void *) 0x08048000
-
 static void syscall_handler (struct intr_frame *);
 
 // Syscalls

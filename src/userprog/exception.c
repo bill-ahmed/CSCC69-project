@@ -5,12 +5,15 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "userprog/syscall.h"
+#include "vm/page.h"
+#include "vm/frame.h"
+#include "threads/vaddr.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
-static void kill (struct intr_frame *);
-static void page_fault (struct intr_frame *);
+static void kill(struct intr_frame *);
+static void page_fault(struct intr_frame *);
 
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -27,86 +30,84 @@ static void page_fault (struct intr_frame *);
 
    Refer to [IA32-v3a] section 5.15 "Exception and Interrupt
    Reference" for a description of each of these exceptions. */
-void
-exception_init (void) 
+void exception_init(void)
 {
-  /* These exceptions can be raised explicitly by a user program,
+   /* These exceptions can be raised explicitly by a user program,
      e.g. via the INT, INT3, INTO, and BOUND instructions.  Thus,
      we set DPL==3, meaning that user programs are allowed to
      invoke them via these instructions. */
-  intr_register_int (3, 3, INTR_ON, kill, "#BP Breakpoint Exception");
-  intr_register_int (4, 3, INTR_ON, kill, "#OF Overflow Exception");
-  intr_register_int (5, 3, INTR_ON, kill,
+   intr_register_int(3, 3, INTR_ON, kill, "#BP Breakpoint Exception");
+   intr_register_int(4, 3, INTR_ON, kill, "#OF Overflow Exception");
+   intr_register_int(5, 3, INTR_ON, kill,
                      "#BR BOUND Range Exceeded Exception");
 
-  /* These exceptions have DPL==0, preventing user processes from
+   /* These exceptions have DPL==0, preventing user processes from
      invoking them via the INT instruction.  They can still be
      caused indirectly, e.g. #DE can be caused by dividing by
      0.  */
-  intr_register_int (0, 0, INTR_ON, kill, "#DE Divide Error");
-  intr_register_int (1, 0, INTR_ON, kill, "#DB Debug Exception");
-  intr_register_int (6, 0, INTR_ON, kill, "#UD Invalid Opcode Exception");
-  intr_register_int (7, 0, INTR_ON, kill,
+   intr_register_int(0, 0, INTR_ON, kill, "#DE Divide Error");
+   intr_register_int(1, 0, INTR_ON, kill, "#DB Debug Exception");
+   intr_register_int(6, 0, INTR_ON, kill, "#UD Invalid Opcode Exception");
+   intr_register_int(7, 0, INTR_ON, kill,
                      "#NM Device Not Available Exception");
-  intr_register_int (11, 0, INTR_ON, kill, "#NP Segment Not Present");
-  intr_register_int (12, 0, INTR_ON, kill, "#SS Stack Fault Exception");
-  intr_register_int (13, 0, INTR_ON, kill, "#GP General Protection Exception");
-  intr_register_int (16, 0, INTR_ON, kill, "#MF x87 FPU Floating-Point Error");
-  intr_register_int (19, 0, INTR_ON, kill,
+   intr_register_int(11, 0, INTR_ON, kill, "#NP Segment Not Present");
+   intr_register_int(12, 0, INTR_ON, kill, "#SS Stack Fault Exception");
+   intr_register_int(13, 0, INTR_ON, kill, "#GP General Protection Exception");
+   intr_register_int(16, 0, INTR_ON, kill, "#MF x87 FPU Floating-Point Error");
+   intr_register_int(19, 0, INTR_ON, kill,
                      "#XF SIMD Floating-Point Exception");
 
-  /* Most exceptions can be handled with interrupts turned on.
+   /* Most exceptions can be handled with interrupts turned on.
      We need to disable interrupts for page faults because the
      fault address is stored in CR2 and needs to be preserved. */
-  intr_register_int (14, 0, INTR_OFF, page_fault, "#PF Page-Fault Exception");
+   intr_register_int(14, 0, INTR_OFF, page_fault, "#PF Page-Fault Exception");
 }
 
 /* Prints exception statistics. */
-void
-exception_print_stats (void) 
+void exception_print_stats(void)
 {
-  printf ("Exception: %lld page faults\n", page_fault_cnt);
+   printf("Exception: %lld page faults\n", page_fault_cnt);
 }
 
 /* Handler for an exception (probably) caused by a user process. */
 static void
-kill (struct intr_frame *f) 
+kill(struct intr_frame *f)
 {
-  /* This interrupt is one (probably) caused by a user process.
+   /* This interrupt is one (probably) caused by a user process.
      For example, the process might have tried to access unmapped
      virtual memory (a page fault).  For now, we simply kill the
      user process.  Later, we'll want to handle page faults in
      the kernel.  Real Unix-like operating systems pass most
      exceptions back to the process via signals, but we don't
      implement them. */
-     
-  /* The interrupt frame's code segment value tells us where the
+
+   /* The interrupt frame's code segment value tells us where the
      exception originated. */
-  switch (f->cs)
-    {
-    case SEL_UCSEG:
+   switch (f->cs)
+   {
+   case SEL_UCSEG:
       /* User's code segment, so it's a user exception, as we
          expected.  Kill the user process.  */
-      printf ("%s: dying due to interrupt %#04x (%s).\n",
-              thread_name (), f->vec_no, intr_name (f->vec_no));
-      intr_dump_frame (f);
-      thread_exit (); 
+      printf("%s: dying due to interrupt %#04x (%s).\n",
+             thread_name(), f->vec_no, intr_name(f->vec_no));
+      intr_dump_frame(f);
+      thread_exit();
 
-    case SEL_KCSEG:
+   case SEL_KCSEG:
       /* Kernel's code segment, which indicates a kernel bug.
          Kernel code shouldn't throw exceptions.  (Page faults
          may cause kernel exceptions--but they shouldn't arrive
          here.)  Panic the kernel to make the point.  */
-      intr_dump_frame (f);
-      PANIC ("Kernel bug - unexpected interrupt in kernel"); 
+      intr_dump_frame(f);
+      PANIC("Kernel bug - unexpected interrupt in kernel");
 
-    default:
+   default:
       /* Some other code segment?  Shouldn't happen.  Panic the
          kernel. */
-      printf ("Interrupt %#04x (%s) in unknown segment %04x\n",
-             f->vec_no, intr_name (f->vec_no), f->cs);
-      thread_exit ();
-    }
+      printf("Interrupt %#04x (%s) in unknown segment %04x\n",
+             f->vec_no, intr_name(f->vec_no), f->cs);
+      thread_exit();
+   }
 }
 
 /* Page fault handler.  This is a skeleton that must be filled in
@@ -121,34 +122,127 @@ kill (struct intr_frame *f)
    description of "Interrupt 14--Page Fault Exception (#PF)" in
    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
 static void
-page_fault (struct intr_frame *f) 
+page_fault(struct intr_frame *f)
 {
-  bool not_present;  /* True: not-present page, false: writing r/o page. */
-  bool write;        /* True: access was write, false: access was read. */
-  bool user;         /* True: access by user, false: access by kernel. */
-  void *fault_addr;  /* Fault address. */
+   bool not_present; /* True: not-present page, false: writing r/o page. */
+   bool write;       /* True: access was write, false: access was read. */
+   bool user;        /* True: access by user, false: access by kernel. */
+   void *fault_addr; /* Fault address. */
 
-  /* Obtain faulting address, the virtual address that was
+   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
      that caused the fault (that's f->eip).
      See [IA32-v2a] "MOV--Move to/from Control Registers" and
      [IA32-v3a] 5.15 "Interrupt 14--Page Fault Exception
      (#PF)". */
-  asm ("movl %%cr2, %0" : "=r" (fault_addr));
+   asm("movl %%cr2, %0"
+       : "=r"(fault_addr));
 
-  /* Turn interrupts back on (they were only off so that we could
+   /* Turn interrupts back on (they were only off so that we could
      be assured of reading CR2 before it changed). */
-  intr_enable ();
+   intr_enable();
 
-  /* Count page faults. */
-  page_fault_cnt++;
+   /* Count page faults. */
+   page_fault_cnt++;
 
-  /* Determine cause. */
-  not_present = (f->error_code & PF_P) == 0;
-  write = (f->error_code & PF_W) != 0;
-  user = (f->error_code & PF_U) != 0;
+   /* Determine cause. */
+   not_present = (f->error_code & PF_P) == 0;
+   write = (f->error_code & PF_W) != 0;
+   user = (f->error_code & PF_U) != 0;
 
-  exit (-1);
+   /* Locate the page that faulted in the supplemental page table.  
+      If the memory reference is valid, use the supplemental page table 
+      entry to locate the data that goes in the page, which might be 
+      in the file system, or in a swap slot, or it might simply be an 
+      all-zero page. 
+      
+      If you implement sharing, the page’s data might even already be 
+      in a page frame, but not in the page table. If the supplemental 
+      page table indicates that the user process should not expect any data 
+      at the address it was trying to access, or if the page lies within
+      kernel virtual memory, or if the access is an attempt to write to a 
+      read-only page, then the access is invalid. Any invalid access 
+      terminates the process and thereby frees all of its resources. */
+
+   bool loaded_successfully = false;
+
+   /* If the page is not present, and it's a user vaddr, 
+   and fault_addr isn't below the page boundary */
+   if (not_present && fault_addr > PAGE_BOUNDARY && is_user_vaddr(fault_addr))
+   {
+      /* Grab the spte from the spt that corresponds to that vaddr */
+      struct sup_page_table_entry *spte = spt_get_entry (fault_addr);
+
+      /* If not NULL, try to put the missing page back into memory. */
+      if (spte != NULL)
+      {
+         /* We know this data exists somewhere, just have to find it */
+         if (!spte->in_swap)
+         {
+            /* Swap into a frame */
+            // loaded_successfully = swap_into_memory (spte);
+         }
+
+         /* Otherwise not in swap, switch over cases */
+         else
+         {
+            switch (spte->type)
+            {
+               /* In process::load_segment we set up page entries with 
+               byte offsets to be able to lazy load the code from that 
+               executable's file later (now), when the execution pointer
+               gets far enough. */
+               case PAGE_CODE:
+                  /* Lazy load from file into a new spte and add to ft.
+                     The spte is already has the file offset to read from */
+                  
+                  // loaded_successfully = spt_load_from_file (spte);
+               break;
+
+               case PAGE_MMAP:
+                  /* Lazy load section of memory mapped file into memory */
+                  /* Todo: mmap */
+               break;
+
+               default:
+               break;
+            }
+         }
+         
+         /* If we have swapped or loaded something into memory properly, we can return */
+         if (loaded_successfully)
+         {
+            return;
+         }
+
+      }
+      /* Spte with that address hasn't been added, suspected stack overflow */
+      else
+      {
+         /* Make sure fault_addr is no more than 32 bytes above 
+         the current stack pointer */
+         if ((PHYS_BASE - pg_round_down(fault_addr)) <= THREAD_MAX_STACK_SIZE 
+         && (uint32_t *)fault_addr >= (f->esp - 32))
+         {
+            /* Grow the stack by one page */
+            // loaded_successfully = spt_grow_stack_by_one(fault_addr);
+         }
+         else
+         {
+            /* This fault_addr is funky and we should exit? I think */
+         }  
+      }
+   }
+   // Instead of exiting, we must now handle faults by creating user pages
+   if (!loaded_successfully) 
+   {
+      printf("Page fault at %p: %s error %s page in %s context.\n",
+             fault_addr,
+             not_present ? "not present" : "rights violation",
+             write ? "writing" : "reading",
+             user ? "user" : "kernel");
+
+      kill(f);
+   }
 }
-

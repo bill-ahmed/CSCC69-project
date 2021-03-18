@@ -28,6 +28,9 @@ typedef int tid_t;
 
 #define THREAD_MAX_FILES 128
 
+/* Limit stack to ~32MB (~8 millionth address * 4 bytes per address ) */
+#define THREAD_MAX_STACK_SIZE (1 << 23)
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -120,6 +123,9 @@ struct thread
       Index corresponds to (fd - 2) since 0 and 1 are reserved */
    struct file *open_descriptors[THREAD_MAX_FILES];
    struct file *executable_file;      /* This thread's executable file. */
+
+   /* Virtual memory */
+   struct list sup_page_table;
 
    /* Owned by userprog/process.c. */
    uint32_t *pagedir; /* Page directory. */

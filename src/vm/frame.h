@@ -1,7 +1,7 @@
 #ifndef VM_FRAME_H
 #define VM_FRAME_H
 
-#include <list.h>
+#include "lib/kernel/list.h"
 #include "threads/palloc.h"
 
 /* 
@@ -17,19 +17,17 @@
 struct list frame_table_list;
 struct lock frame_table_lock;
 
-unsigned int VM_FRAME_TABLE_SIZE = 0;
-
 struct frame_table_entry 
 {
     struct list_elem elem;  // The list element
     struct thread *owner;   // Owner thread of this frame
-    void *page;             // Memory address to base of page
-    
-    // Maybe store information for memory mapped files here too?
+    void *page;             // Memory address to base of page    
 };
 
-void frame_table_init ();
-void *frame_table_get_page (enum palloc_flags flags);
-void frame_table_free_page (void *page);
+void ft_init ();
+void *ft_allocate (enum palloc_flags flags);
+void ft_free_page (void *page);
+
+struct frame_table_entry *ft_find_page(void *page);
 
 #endif
