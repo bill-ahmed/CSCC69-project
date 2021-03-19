@@ -231,6 +231,7 @@ page_fault (struct intr_frame *f)
          else
          {
             /* This fault_addr is funky and we should exit? I think */
+            exit (-1);
          }  
       }
    }
@@ -243,6 +244,7 @@ page_fault (struct intr_frame *f)
              write ? "writing" : "reading",
              user ? "user" : "kernel");
 
-      kill (f);
+      // kill (f);
+      exit (-1);
    }
 }
