@@ -11,6 +11,6 @@ jobs:
     container:
       image: thierrysans/pintos
     steps:
-    - name: Build and test user programs
+    - name: Build and test VM
       uses: actions/checkout@v2
-    - run: cd src/userprog && make clean && make check
+    - run: cd src/vm && make clean && make check
