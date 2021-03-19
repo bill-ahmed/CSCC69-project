@@ -134,7 +134,6 @@ process_wait (tid_t child_tid)
   if(list_empty (&curr->child_threads))
     return -1;
 
-
   // Check if child belongs to current thread
   for (e = list_begin (&curr->child_threads); e != list_end (&curr->child_threads); e = list_next(e))
   {
@@ -500,8 +499,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+      /* TODO: REPLACE FROM =HERE= */
+
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
+      
       if (kpage == NULL)
         return false;
 
@@ -520,6 +522,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           return false; 
         }
 
+      /* TO =HERE= with code setting up a spte for this process
+      and adding it to the process' spt as a PAGE_CODE */
+
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -536,10 +541,20 @@ setup_stack (void **esp, int argc, char **argv)
   uint8_t *kpage;
   bool success = false;
 
+  /* In here we want to allocate a stack page for the process 
+  and start writing the stack args at that offset */
+
+  // void *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  // bool success = spt_grow_stack_by_one (upage);
+
+  // Won't need this since it will be in process spt
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+
   if (kpage != NULL) 
     {
+      // Installing will be done in spt_grow_stack_by_one
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      
       if (success)
       {
         *esp = PHYS_BASE;
@@ -603,6 +618,9 @@ setup_stack (void **esp, int argc, char **argv)
         *esp = *esp - sizeof(void*);
         memset (*esp, NULL, sizeof(void*));
       }
+
+      /* This ELSE can be removed since if the stack growth fails, 
+      there won't be anything to free anyway */ 
       else
         palloc_free_page (kpage);
     }
