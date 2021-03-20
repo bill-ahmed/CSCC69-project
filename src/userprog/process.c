@@ -19,6 +19,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/page.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -418,10 +419,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   file_close (file);
   return success;
 }
-
-/* load() helpers. */
-
-static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -538,111 +535,75 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp, int argc, char **argv) 
 {
-  uint8_t *kpage;
-  bool success = false;
+  /* Install a page at the virutal vaddr = PHYS_BASE-PGSIZE 
+  (The bottom-most page in the stack) */
+  bool success = spt_grow_stack_by_one((uint8_t *) PHYS_BASE - PGSIZE);
 
-  /* In here we want to allocate a stack page for the process 
-  and start writing the stack args at that offset */
+  if (success)
+  {
+    *esp = PHYS_BASE;
 
-  // void *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
-  // bool success = spt_grow_stack_by_one (upage);
+    // Keep track of size of each arg
+    char *arg_locations[argc];
 
-  // Won't need this since it will be in process spt
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-
-  if (kpage != NULL) 
+    // STEP 1
+    // Save each argument to the stack, decrementing & writing to esp as required
+    // Each element is added in reverse order to make traversal later on easier.
+    for (int i = argc - 1; i >= 0; i--)
     {
-      // Installing will be done in spt_grow_stack_by_one
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      
-      if (success)
-      {
-        *esp = PHYS_BASE;
+      int arg_size = strlen(argv[i]) + 1;
 
-        // Keep track of size of each arg
-        char *arg_locations[argc];
-        
-        // STEP 1
-        // Save each argument to the stack, decrementing & writing to esp as required
-        // Each element is added in reverse order to make traversal later on easier.
-        for (int i = argc - 1; i >= 0; i--)
-        {
-          int arg_size = strlen(argv[i]) + 1;
-
-          *esp = *esp - arg_size;
-          memcpy (*esp, argv[i], arg_size);
-          arg_locations[i] = *esp;
-        }
-
-        // STEP 2
-        // Word-align bytes, needs to be in multiple of 4
-        // We use esp itself to see how far it is from 
-        // the next multiple of 4.
-        int bytes_to_add = (size_t) *esp % 4;
-        if(bytes_to_add != 0)
-        {
-          *esp = *esp - bytes_to_add;
-          memset(*esp, 0, bytes_to_add);
-        }
-
-        // STEP 3
-        // Separation between argument values and their addresses, from 3.1.5
-        *esp = *esp - sizeof(char*);
-        memset (*esp, 0, sizeof(char*));
-
-        // STEP 4
-        // Add address of each argument onto stack
-        for(int i = argc - 1; i >= 0; i--)
-        {
-          *esp = *esp - sizeof(char*);
-          memcpy(*esp, &arg_locations[i], sizeof(char*));
-        }
-
-        // Keep track of where argv[0] is!
-        // Since it's the last item we added in previous 
-        // for loop, it's guaranteed to be where esp is at.
-        char *argv_addr = *esp;
-
-        // STEP 5
-        // Push address of argv[0]
-        *esp = *esp - sizeof(char**);
-        memcpy(*esp, &argv_addr, sizeof(char**));
-
-        // STEP 6
-        // Push value of argc
-        *esp = *esp - sizeof(char*);
-        memcpy(*esp, (char*)&(argc), sizeof(char*));
-
-        // STEP 7
-        // Push dummy return address
-        *esp = *esp - sizeof(void*);
-        memset (*esp, NULL, sizeof(void*));
-      }
-
-      /* This ELSE can be removed since if the stack growth fails, 
-      there won't be anything to free anyway */ 
-      else
-        palloc_free_page (kpage);
+      *esp = *esp - arg_size;
+      memcpy(*esp, argv[i], arg_size);
+      arg_locations[i] = *esp;
     }
+
+    // STEP 2
+    // Word-align bytes, needs to be in multiple of 4
+    // We use esp itself to see how far it is from
+    // the next multiple of 4.
+    int bytes_to_add = (size_t)*esp % 4;
+    if (bytes_to_add != 0)
+    {
+      *esp = *esp - bytes_to_add;
+      memset(*esp, 0, bytes_to_add);
+    }
+
+    // STEP 3
+    // Separation between argument values and their addresses, from 3.1.5
+    *esp = *esp - sizeof(char *);
+    memset(*esp, 0, sizeof(char *));
+
+    // STEP 4
+    // Add address of each argument onto stack
+    for (int i = argc - 1; i >= 0; i--)
+    {
+      *esp = *esp - sizeof(char *);
+      memcpy(*esp, &arg_locations[i], sizeof(char *));
+    }
+
+    // Keep track of where argv[0] is!
+    // Since it's the last item we added in previous
+    // for loop, it's guaranteed to be where esp is at.
+    char *argv_addr = *esp;
+
+    // STEP 5
+    // Push address of argv[0]
+    *esp = *esp - sizeof(char **);
+    memcpy(*esp, &argv_addr, sizeof(char **));
+
+    // STEP 6
+    // Push value of argc
+    *esp = *esp - sizeof(char *);
+    memcpy(*esp, (char *)&(argc), sizeof(char *));
+
+    // STEP 7
+    // Push dummy return address
+    *esp = *esp - sizeof(void *);
+    memset(*esp, NULL, sizeof(void *));
+  }
+
+  /* True if stack page installed, false otherwise */
   return success;
 }
 
-/* Adds a mapping from user virtual address UPAGE to kernel
-   virtual address KPAGE to the page table.
-   If WRITABLE is true, the user process may modify the page;
-   otherwise, it is read-only.
-   UPAGE must not already be mapped.
-   KPAGE should probably be a page obtained from the user pool
-   with palloc_get_page().
-   Returns true on success, false if UPAGE is already mapped or
-   if memory allocation fails. */
-static bool
-install_page (void *upage, void *kpage, bool writable)
-{
-  struct thread *t = thread_current ();
-
-  /* Verify that there's not already a page at that virtual
-     address, then map our page there. */
-  return (pagedir_get_page (t->pagedir, upage) == NULL
-          && pagedir_set_page (t->pagedir, upage, kpage, writable));
-}

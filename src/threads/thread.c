@@ -479,6 +479,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  list_init(&t->sup_page_table);
 
   // Initialize all file descritors to point to nothing.
   memset (t->open_descriptors, NULL, sizeof (struct file *) * THREAD_MAX_FILES);

@@ -22,6 +22,8 @@ struct frame_table_entry
     struct list_elem elem;  // The list element
     struct thread *owner;   // Owner thread of this frame
     void *page;             // Memory address to base of page    
+
+    struct sup_page_table_entry *spte; 
 };
 
 void ft_init ();
