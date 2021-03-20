@@ -25,12 +25,17 @@ struct sup_page_table_entry
     
     bool in_swap;               /* Whether has been swapped out */
     bool marked_for_swap;       /* Whether has been marked to swap out by LRU */
+    bool writable;              /* Whether able to be written (modified) to */
     enum page_type type;        /* One of PAGE_STACK, PAGE_CODE, etc */
+    struct thread *owner;       /* The owner of the spte */
+    
 };
 
 /* Functions */
 struct sup_page_table_entry *spt_get_entry (void *upage);
 void spt_remove_entry (struct sup_page_table_entry *spte);
 bool spt_load_from_file(struct sup_page_table_entry *spte);
+bool spt_grow_stack_by_one(void *vaddr);
 
+bool install_page(void *upage, void *kpage, bool writable);
 #endif

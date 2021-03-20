@@ -226,7 +226,7 @@ page_fault (struct intr_frame *f)
          && (uint32_t *)fault_addr >= (f->esp - 32))
          {
             /* Grow the stack by one page */
-            // loaded_successfully = spt_grow_stack_by_one(fault_addr);
+            loaded_successfully = spt_grow_stack_by_one(fault_addr);
          }
          else
          {
