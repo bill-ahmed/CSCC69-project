@@ -20,6 +20,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/page.h"
+#include "vm/frame.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -496,31 +497,49 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* TODO: REPLACE FROM =HERE= */
-
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      
-      if (kpage == NULL)
+      struct sup_page_table_entry *spte = malloc(sizeof(struct sup_page_table_entry));
+      if (spte == NULL)
+      {
+        /* Pool full */
         return false;
+      }
 
-      /* Load this page. */
+      /* Fill out the page table entry */
+      spte->owner = thread_current();
+      spte->upage = upage;
+      spte->type = PAGE_CODE;
+      spte->in_swap = false;
+      spte->writable = writable;
+
+      /* Get a frame base and zero the bytes */
+      uint8_t *kpage = ft_allocate(PAL_USER | PAL_ZERO);
+     
+      if (kpage == NULL) {
+        free (spte);
+        return false;
+      }
+      
+      /* Write the code into the frame */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+      {
+        ft_free_page (kpage);
+        free (spte);
+        return false; 
+      }
+
+      struct frame_table_entry *fte = ft_find_page (kpage);
+      fte->spte = spte;
 
       /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
+      if (!install_page(upage, kpage, writable))
+      {
+        ft_free_page (kpage);
+        free (spte);
+        return false; 
+      }
 
-      /* TO =HERE= with code setting up a spte for this process
-      and adding it to the process' spt as a PAGE_CODE */
+      /* Add the code page to the process' sup page table */
+      list_push_back (&spte->owner->sup_page_table, spte);
 
       /* Advance. */
       read_bytes -= page_read_bytes;

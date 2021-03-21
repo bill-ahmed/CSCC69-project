@@ -187,27 +187,7 @@ page_fault (struct intr_frame *f)
          /* Otherwise not in swap, switch over cases */
          else
          {
-            switch (spte->type)
-            {
-               /* In process::load_segment we set up page entries with 
-               byte offsets to be able to lazy load the code from that 
-               executable's file later (now), when the execution pointer
-               gets far enough. */
-               case PAGE_CODE:
-                  /* Lazy load from file into a new spte and add to ft.
-                     The spte is already has the file offset to read from */
-                  
-                  // loaded_successfully = spt_load_from_file (spte);
-               break;
-
-               case PAGE_MMAP:
-                  /* Lazy load section of memory mapped file into memory */
-                  /* Todo: mmap */
-               break;
-
-               default:
-               break;
-            }
+            /* MMAP */
          }
          
          /* If we have swapped or loaded something into memory properly, we can return */
