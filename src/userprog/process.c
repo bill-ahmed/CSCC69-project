@@ -523,6 +523,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
       {
         ft_free_page (kpage);
+        free (spte);
         return false; 
       }
 
@@ -533,6 +534,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (!install_page(upage, kpage, writable))
       {
         ft_free_page (kpage);
+        free (spte);
         return false; 
       }
 
