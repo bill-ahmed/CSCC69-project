@@ -21,7 +21,8 @@ struct frame_table_entry
 {
     struct list_elem elem;  // The list element
     struct thread *owner;   // Owner thread of this frame
-    void *page;             // Memory address to base of page    
+    void *page;             // Memory address to base of page 
+    bool pinned;            // Used for sync access. Will not be a candidate for swapping if true.
 
     struct sup_page_table_entry *spte; 
 };
@@ -29,7 +30,6 @@ struct frame_table_entry
 void ft_init ();
 void *ft_allocate (enum palloc_flags flags);
 void ft_free_page (void *page);
-
 struct frame_table_entry *ft_find_page(void *page);
 
 #endif
