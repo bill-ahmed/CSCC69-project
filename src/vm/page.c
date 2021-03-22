@@ -5,6 +5,7 @@
 #include "frame.h"
 #include "threads/malloc.h"
 #include "userprog/process.h"
+#include "vm/swap.h"
 
 /* Find a supplementary page table entry in the current process' table */
 struct sup_page_table_entry *
@@ -60,11 +61,39 @@ spt_load_from_file (struct sup_page_table_entry *spte)
 
 }
 
+/* Load given supplemental page entry into memory. Returns 
+   True iff successful, false otherwise. */
+bool
+swap_into_memory(struct sup_page_table_entry *spte)
+{
+  // Step 1: Get frame table entry
+  uint8_t *frame = ft_allocate (PAL_USER | PAL_ZERO);
+
+  // Step 2: Install the page
+  if(!install_page (spte->upage, frame, true))
+  {
+    ft_free_page (frame);
+    return false;
+  }
+
+  // Step 3: Write data from disk into this frame and free it from swap
+  swap_read (spte->upage, spte->swap_index);
+  swap_free (spte->swap_index);
+
+  spte->in_swap = false;
+
+  // Step 4: Link fte and spte
+  struct frame_table_entry *fte = ft_find_page (frame);
+  fte->spte = spte;
+  fte->owner = spte->owner;
+
+  return true;
+}
+
 bool 
 spt_grow_stack_by_one (void *vaddr)
 {
     /* We will have already checked whether this vaddr is for the stack */
-
     struct sup_page_table_entry *spte = malloc (sizeof(struct sup_page_table_entry));
     if (spte == NULL) 
     {
@@ -82,14 +111,18 @@ spt_grow_stack_by_one (void *vaddr)
     spte->writable = true;
 
     /* Get a frame base and install the page there */
-    uint8_t *frame_base = ft_allocate (PAL_USER);
+    uint8_t *frame_base = ft_allocate (PAL_USER | PAL_ZERO);
+    
+    struct frame_table_entry *fte = ft_find_page (frame_base);
+    fte->spte = spte;
+
     bool success = install_page (upage_base, frame_base, spte->writable);
 
     if (!success)
     {
         /* Free the resources we allocated */
         free (spte);
-        free (frame_base); 
+        ft_free_page (frame_base); 
         return false;
     }
 

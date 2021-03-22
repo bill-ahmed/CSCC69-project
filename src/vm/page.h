@@ -27,6 +27,8 @@ struct sup_page_table_entry
     bool marked_for_swap;       /* Whether has been marked to swap out by LRU */
     bool writable;              /* Whether able to be written (modified) to */
     enum page_type type;        /* One of PAGE_STACK, PAGE_CODE, etc */
+
+    int swap_index;             /* Which block sector this page is in the swap disk. */
     struct thread *owner;       /* The owner of the spte */
     
 };
@@ -35,6 +37,7 @@ struct sup_page_table_entry
 struct sup_page_table_entry *spt_get_entry (void *upage);
 void spt_remove_entry (struct sup_page_table_entry *spte);
 bool spt_load_from_file(struct sup_page_table_entry *spte);
+bool swap_into_memory(struct sup_page_table_entry *spte);
 bool spt_grow_stack_by_one(void *vaddr);
 
 bool install_page(void *upage, void *kpage, bool writable);

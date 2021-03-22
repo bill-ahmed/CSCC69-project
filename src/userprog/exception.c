@@ -7,7 +7,9 @@
 #include "userprog/syscall.h"
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -180,8 +182,8 @@ page_fault (struct intr_frame *f)
          /* We know this data exists somewhere, just have to find it */
          if (spte->in_swap)
          {
-            /* Swap into a frame */
-            // loaded_successfully = swap_into_memory (spte);
+            /* Swap into a frame */            
+            loaded_successfully = swap_into_memory (spte);
          }
 
          /* Otherwise not in swap, switch over cases */
@@ -218,13 +220,11 @@ page_fault (struct intr_frame *f)
  
    if (!loaded_successfully) 
    {
-      printf ("Page fault at %p: %s error %s page in %s context.\n",
-             fault_addr,
-             not_present ? "not present" : "rights violation",
-             write ? "writing" : "reading",
-             user ? "user" : "kernel");
-
-      // kill (f);
+      // printf ("Page fault at %p: %s error %s page in %s context.\n",
+      //        fault_addr,
+      //        not_present ? "not present" : "rights violation",
+      //        write ? "writing" : "reading",
+      //        user ? "user" : "kernel");
       exit (-1);
    }
 }

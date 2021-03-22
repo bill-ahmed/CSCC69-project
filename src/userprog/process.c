@@ -92,7 +92,7 @@ start_process (void *file_name_)
     
     curr->parent->child_exec_loaded = 1;
   }
-  /* If load failed, quit. */
+
   palloc_free_page (file_name);
   
   // Yield after lifting semaphore to let parent know
@@ -100,6 +100,7 @@ start_process (void *file_name_)
   sema_up (&curr->parent->child_exec_status);
   thread_yield ();
 
+  /* If load failed, quit. */
   // Run thread_exit after to ensure no weirdness happens
   if(!success)
     thread_exit ();
@@ -513,7 +514,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Get a frame base and zero the bytes */
       uint8_t *kpage = ft_allocate(PAL_USER | PAL_ZERO);
-     
+
       if (kpage == NULL) {
         free (spte);
         return false;

@@ -3,6 +3,7 @@
 
 #include "lib/kernel/list.h"
 #include "threads/palloc.h"
+#include "vm/page.h"
 
 /* 
     - A frame is a 4KB piece of contiguous memory.
@@ -30,6 +31,7 @@ struct frame_table_entry
 void ft_init ();
 void *ft_allocate (enum palloc_flags flags);
 void ft_free_page (void *page);
+void ft_clear_thread_pages();
 struct frame_table_entry *ft_find_page(void *page);
 
 #endif

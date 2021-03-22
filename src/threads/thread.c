@@ -11,6 +11,8 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "userprog/pagedir.h"
+#include "vm/swap.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/syscall.h"
@@ -290,6 +292,11 @@ thread_exit (void)
   // Allow writing to this executable now
   if(curr->executable_file)
     file_close (curr->executable_file);
+  
+  // Clean up all of our used memory
+  struct sup_page_table_entry *spte;
+  struct list *spt_list = &curr->sup_page_table;
+  struct list_elem *e;
 
   // Make sure parent doesn't keep waiting
   if(curr->parent != NULL)
@@ -486,6 +493,8 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init (&t->child_threads);
   sema_init (&t->child_exec_status, 0);
   sema_init (&t->allow_exit_sema, 0);
+
+  list_init(&t->sup_page_table);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
