@@ -70,6 +70,12 @@ struct sup_page_table_entry
 	bool writable;          	/* Whether able to be written (modified) to */
 	enum page_type type;    	/* One of PAGE_STACK, PAGE_CODE, etc */
 	struct thread *owner;   	/* The owner of the spte */
+
+	/* Load on demand data */
+    struct file *file;      	/* The file to grab data from */
+    off_t file_offset;      	/* Where this page starts in the file */
+    size_t page_read_bytes; 	/* Number of bytes of data to read */
+    size_t page_zero_bytes; 	/* Number of bytes to fill with zeros */
 };
 
 /* In thread.h */
@@ -94,8 +100,9 @@ there is one already there in the table then the entry gets returned and we dete
 whether it’s in swap or in a file somewhere and allocate a frame appropriately for it.
 If there is no page entry for that corresponding (valid) user address then we create
 a page for it at its closest base offset and allocate a new frame for it in memory.
-Sometimes this involves swapping too. Things like whether we need to allocate a stack page is determinable by looking at if the fault address is close to the current thread’s stack pointer. 
-
+Sometimes this involves swapping too. Things like whether we need to allocate a stack 
+page is determinable by looking at if the fault address is close to the current 
+thread’s stack pointer. 
 
 Choosing to use a linked list is beneficial since we assume that most user programs
 will not be using a lot of memory. This of course means if there is a thread that
@@ -107,14 +114,23 @@ need to be initialized and likely be sparsely used for most threads.
 >> kernel and user virtual addresses that alias a single frame, or
 >> alternatively how do you avoid the issue?
 
-We avoid this issue by making sure to only access user data through user virtual addresses. This way we don’t run into an alias problem by manipulating data directly in a frame and can let the underlying memory system manipulate dirty and accessed flags appropriately.
+We avoid this issue by making sure to only access user data through user virtual 
+addresses. This way we don’t run into an alias problem by manipulating data directly 
+in a frame and can let the underlying memory system manipulate dirty and accessed 
+flags appropriately.
 
 ---- SYNCHRONIZATION ----
 
 >> A4: When two user processes both need a new frame at the same time,
 >> how are races avoided?
 
-The frame table has a lock that restricts access to modifying the frame table to one thread at a time. This is critical because it eliminates the case where a thread is partially through needing a frame and possibly swapping out a page of data to get it, and then being interrupted by another thread needing to do the same. Specifically that it could be the case that the data that thread-A needed had been swapped out or is differently mapped by thread-B and thus would be an invalid access, or possibly no frames left at the time the code returns to thread-A.
+The frame table has a lock that restricts access to modifying the frame table to one 
+thread at a time. This is critical because it eliminates the case where a thread is 
+partially through needing a frame and possibly swapping out a page of data to get it, 
+and then being interrupted by another thread needing to do the same. Specifically that 
+it could be the case that the data that thread-A needed had been swapped out or is 
+differently mapped by thread-B and thus would be an invalid access, or possibly no frames 
+left at the time the code returns to thread-A.
 
 We make sure to check to free the lock if a thread exits to avoid a deadlock.
 
@@ -123,9 +139,16 @@ We make sure to check to free the lock if a thread exits to avoid a deadlock.
 >> A5: Why did you choose the data structure(s) that you did for
 >> representing virtual-to-physical mappings?
 
-Storing page information per thread in a supplementary page table seemed like the most intuitive way to go about keeping track of the data. As well, having each frame map 1 to 1 to a supplemental page table entry meant that it was super easy to keep track of what pages were where and keeping track of whether a user page in memory or not is straightforward with this method as well as long as you set the flags at the appropriate times.
+Storing page information per thread in a supplementary page table seemed like the 
+most intuitive way to go about keeping track of the data. As well, having each frame 
+map 1 to 1 to a supplemental page table entry meant that it was super easy to keep 
+track of what pages were where and keeping track of whether a user page in memory or 
+not is straightforward with this method as well as long as you set the flags at the 
+appropriate times.
 
-Specifically each frame entry maps to one supplemental page table entry. We chose to do this because pages are swapped out and physical frames need to be freed and reallocated and then assigned to a new user page.
+Specifically each frame entry maps to one supplemental page table entry. We chose 
+to do this because pages are swapped out and physical frames need to be freed and 
+reallocated and then assigned to a new user page.
 
 FRM-TBL-Entry    SP-PG-TBL-Entry   
 -----------      ---------------
@@ -174,20 +197,30 @@ struct lock swap_modify_lock;
 >> B2: When a frame is required but none is free, some frame must be
 >> evicted.  Describe your code for choosing a frame to evict.
 
-The code for evicting goes through all allocated frame table entries and finds the least accessed frame using “pagedir_is_accessed()”, closely matching the LRU algorithm described in class. In the event that a frame can’t be chosen (i.e. all of them are recently accessed), then the first one available is taken as described in “ft_find_evict_page()”.
+The code for evicting goes through all allocated frame table entries and finds 
+the least accessed frame using “pagedir_is_accessed()”, closely matching the 
+LRU algorithm described in class. In the event that a frame can’t be chosen 
+(i.e. all of them are recently accessed), then the first one available is taken 
+as described in “ft_find_evict_page()”.
 
 >> B3: When a process P obtains a frame that was previously used by a
 >> process Q, how do you adjust the page table (and any other data
 >> structures) to reflect the frame Q no longer has?
 
-We remove that frame entry (previously owned by Q) from the frame table list and clear the data in its physical page. Then a new frame entry is allocated and assigned to the new sup page table entry owned by process P. 
+We remove that frame entry (previously owned by Q) from the frame table list 
+and clear the data in its physical page. Then a new frame entry is allocated 
+and assigned to the new sup page table entry owned by process P. 
 
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
 
-We first check that the nearest page boundary (obtained via “pg_round_down()”) is within the thread’s allowed memory space (THREAD_MAX_STACK_SIZE is set to 32MB). If this check passes, we then make sure that the fault address is within some acceptable distance of the stack pointer. This distance was set to 32 bytes to allow memory load instructions and other important fields when setting up the user stack.
-
+We first check that the nearest page boundary (obtained via “pg_round_down()”) 
+is within the thread’s allowed memory space (THREAD_MAX_STACK_SIZE is set to 32MB). 
+If this check passes, we then make sure that the fault address is within some 
+acceptable distance of the stack pointer. This distance was set to 32 bytes to 
+allow memory load instructions and other important fields when setting up the 
+user stack.
 
 ---- SYNCHRONIZATION ----
 
@@ -201,13 +234,24 @@ We first check that the nearest page boundary (obtained via “pg_round_down()�
 >> the page during the eviction process?  How do you avoid a race
 >> between P evicting Q's frame and Q faulting the page back in?
 
-Each frame table entry keeps track of whether it may be written to, via a “pinned” boolean. Combined with our use of locks (when doing lookups/modifying the frame table) we were able to avoid such scenarios because if P is about to evict Q’s page, or Q is about to access/modify it, the first one to win the race acquires the lock and sets the “pinned” value accordingly. Future evictions (while the frame is still pinned) will ignore this frame table entry entirely as a result of our implementation of “ft_find_evict_page()”.
+Each frame table entry keeps track of whether it may be written to, via a 
+“pinned” boolean. Combined with our use of locks (when doing lookups/modifying 
+the frame table) we were able to avoid such scenarios because if P is about to 
+evict Q’s page, or Q is about to access/modify it, the first one to win the 
+race acquires the lock and sets the “pinned” value accordingly. Future evictions 
+(while the frame is still pinned) will ignore this frame table entry entirely as 
+a result of our implementation of “ft_find_evict_page()”.
 
 >> B7: Suppose a page fault in process P causes a page to be read from
 >> the file system or swap.  How do you ensure that a second process Q
 >> cannot interfere by e.g. attempting to evict the frame while it is
 >> still being read in?
-Similar to the previous answer, after a frame is created via “ft_allocate()” it is immediately marked as pinned. Further, since the SPT entry is not yet set, this frame will be skipped as part of our eviction algorithm’s implementation, ensuring that the page can be read into memory. Once the loading from swap is completed, the newly installed page can be evicted in the next call to “ft_find_evict_page()” because the correct flags have been set by then.
+Similar to the previous answer, after a frame is created via “ft_allocate()” it 
+is immediately marked as pinned. Further, since the SPT entry is not yet set, 
+this frame will be skipped as part of our eviction algorithm’s implementation, 
+ensuring that the page can be read into memory. Once the loading from swap is 
+completed, the newly installed page can be evicted in the next call to 
+“ft_find_evict_page()” because the correct flags have been set by then.
 
 >> B8: Explain how you handle access to paged-out pages that occur
 >> during system calls.  Do you use page faults to bring in pages (as
@@ -215,7 +259,13 @@ Similar to the previous answer, after a frame is created via “ft_allocate()”
 >> into physical memory, or do you use some other design?  How do you
 >> gracefully handle attempted accesses to invalid virtual addresses?
 
-Since we keep track of all supplemental page entries for each thread, we make use of page faults to let us know when we need to load something from swap. Upon accessing valid swap memory in a system call, the page fault will check the current thread’s supplemental page table and load the appropriate data. To protect against invalid virtual addresses, we added several checks along the way to make sure that “fault_addr” is within acceptable bounds, or there exists a supplemental page table entry for it.
+Since we keep track of all supplemental page entries for each thread, we make use 
+of page faults to let us know when we need to load something from swap. Upon 
+accessing valid swap memory in a system call, the page fault will check the current 
+thread’s supplemental page table and load the appropriate data. To protect against 
+invalid virtual addresses, we added several checks along the way to make sure that 
+“fault_addr” is within acceptable bounds, or there exists a supplemental page table 
+entry for it.
 
 ---- RATIONALE ----
 
@@ -226,7 +276,15 @@ Since we keep track of all supplemental page entries for each thread, we make us
 >> where your design falls along this continuum and why you chose to
 >> design it this way.
 
-We decided to introduce locks in key areas of our VM implementation. These areas include frame table allocation, swapping (read + write to disk), supplemental page manipulations, and other areas as well. This breakdown allows threads to complete key tasks in “parallel”, for example a thread can request a new frame table entry without having to wait on an entirely different thread writing to the swap disk. This design, therefore, falls in between the two mentioned approaches (leaning more to the fewer-locks side of things) because it provided a good trade off between parallelism and complexity. Ensuring only key areas are synchronized properly made the code easier to follow and track down any bugs with our implementation.
+We decided to introduce locks in key areas of our VM implementation. These areas 
+include frame table allocation, swapping (read + write to disk), supplemental page 
+manipulations, and other areas as well. This breakdown allows threads to complete 
+key tasks in “parallel”, for example a thread can request a new frame table entry 
+without having to wait on an entirely different thread writing to the swap disk. This 
+design, therefore, falls in between the two mentioned approaches (leaning more to the 
+fewer-locks side of things) because it provided a good trade off between parallelism 
+and complexity. Ensuring only key areas are synchronized properly made the code easier 
+to follow and track down any bugs with our implementation.
 
          	MEMORY MAPPED FILES
          	===================
@@ -243,7 +301,15 @@ We decided to introduce locks in key areas of our VM implementation. These areas
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
 
-In the case of swap pages, the contents can be written to the swap disk and retrieved at a later time. A mmap implementation is different in that paging its contents writes them back to the file, instead of the swap disk. With this implementation we would need to keep track of the file it originated from as well as its offset in order to correctly save it back to disk. During the eviction process, therefore, we would need a special consideration for memory mapped files by writing them to their respective file at the correct index, and then freeing their frame table/supplemental table entries.
+In the case of swap pages, the contents can be written to the swap 
+disk and retrieved at a later time. A mmap implementation is different 
+in that paging its contents writes them back to the file, instead of 
+the swap disk. With this implementation we would need to keep track of 
+the file it originated from as well as its offset in order to correctly 
+save it back to disk. During the eviction process, therefore, we would 
+need a special consideration for memory mapped files by writing them to 
+their respective file at the correct index, and then freeing their frame 
+table/supplemental table entries.
 
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
@@ -257,7 +323,13 @@ In the case of swap pages, the contents can be written to the swap disk and retr
 >> implementation either does or does not share much of the code for
 >> the two situations.
 
-Our implementation would share much of the code with data demand-paged from executables because it simplifies the boilerplate code needed to setup. By utilizing similar constructs and synchronization we could ensure a more robust implementation that’s both easy to follow and debug. Since writing more synchronization logic (and code in general) would increase the surface-area for potential deadlocks, reusing a similar implementation also helps to prevent this from happening.
+Our implementation would share much of the code with data demand-paged 
+from executables because it simplifies the boilerplate code needed to 
+setup. By utilizing similar constructs and synchronization we could ensure 
+a more robust implementation that’s both easy to follow and debug. Since 
+writing more synchronization logic (and code in general) would increase 
+the surface-area for potential deadlocks, reusing a similar implementation 
+also helps to prevent this from happening.
 
            	SURVEY QUESTIONS
            	================
@@ -271,7 +343,13 @@ the quarter.
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
 
-We found understanding virtual memory to be quite challenging. The video provided by the professor was useful (in the sense that it uncovered what pintos is doing under-the-hood), but unwrapping all of the abstract concepts into actual code required a lot of effort. Understanding how the frame table and supplemental page tables play a role in virtual memory would have been very nice to see from the beginning, e.g. through the use of more visualizations or analogies.
+We found understanding virtual memory to be quite challenging. The video 
+provided by the professor was useful (in the sense that it uncovered what 
+pintos is doing under-the-hood), but unwrapping all of the abstract concepts 
+into actual code required a lot of effort. Understanding how the frame table 
+and supplemental page tables play a role in virtual memory would have been 
+very nice to see from the beginning, e.g. through the use of more 
+visualizations or analogies.
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
@@ -280,7 +358,10 @@ We found understanding virtual memory to be quite challenging. The video provide
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
 
-The online reference that a student posted on Piazza (@202) was very helpful as a supplement to the course material and original documentation provided. We think future students could benefit greatly from the perspective it brings in understanding OS design.
+The online reference that a student posted on Piazza (@202) was very helpful 
+as a supplement to the course material and original documentation provided. 
+We think future students could benefit greatly from the perspective it brings 
+in understanding OS design.
 
 >> Do you have any suggestions for the TAs to more effectively assist
 >> students, either for future quarters or the remaining projects?
