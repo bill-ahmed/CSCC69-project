@@ -206,6 +206,8 @@ ft_find_evict_page()
   )
   {
     fte = list_entry (elem, struct frame_table_entry, elem);
+    if(!fte->spte)
+      continue;
     
     if(!pagedir_is_accessed (thread_current ()->pagedir, fte->page) && fte->spte->writable && !fte->pinned)
       return fte;

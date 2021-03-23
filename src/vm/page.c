@@ -68,6 +68,8 @@ swap_into_memory(struct sup_page_table_entry *spte)
 {
   // Step 1: Get frame table entry
   uint8_t *frame = ft_allocate (PAL_USER | PAL_ZERO);
+  struct frame_table_entry *fte = ft_find_page (frame);
+  fte->pinned = true;
 
   // Step 2: Install the page
   if(!install_page (spte->upage, frame, true))
@@ -83,9 +85,10 @@ swap_into_memory(struct sup_page_table_entry *spte)
   spte->in_swap = false;
 
   // Step 4: Link fte and spte
-  struct frame_table_entry *fte = ft_find_page (frame);
+  
   fte->spte = spte;
   fte->owner = spte->owner;
+  fte->pinned = false;
 
   return true;
 }
@@ -115,6 +118,7 @@ spt_grow_stack_by_one (void *vaddr)
     
     struct frame_table_entry *fte = ft_find_page (frame_base);
     fte->spte = spte;
+    fte->owner = spte->owner;
 
     bool success = install_page (upage_base, frame_base, spte->writable);
 
@@ -125,7 +129,6 @@ spt_grow_stack_by_one (void *vaddr)
         ft_free_page (frame_base); 
         return false;
     }
-
     /* Add the spte to the thread's list */
     list_push_back(&spte->owner->sup_page_table, &spte->elem);
     return true;
