@@ -298,6 +298,8 @@ thread_exit (void)
   struct list *spt_list = &curr->sup_page_table;
   struct list_elem *e;
 
+  ft_clear_thread_pages();
+
   // Make sure parent doesn't keep waiting
   if(curr->parent != NULL)
   {

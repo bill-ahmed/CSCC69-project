@@ -10,6 +10,7 @@
 #include "threads/synch.h"
 #include "process.h"
 #include "pagedir.h"
+#include "vm/page.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -242,6 +243,10 @@ validate_user_address (void *addr)
     exit (-1);
     return;
   }
+
+  // Check if we have a SPTE for addr
+  if(spt_get_entry(addr) != NULL)
+    return;
 
   // Make sure address belongs to process' virtual address space,
   // and has been mapped already.

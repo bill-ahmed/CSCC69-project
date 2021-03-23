@@ -32,6 +32,7 @@ void ft_init ();
 void *ft_allocate (enum palloc_flags flags);
 void ft_free_page (void *page);
 void ft_clear_thread_pages();
+void ft_print_frame_table();
 struct frame_table_entry *ft_find_page(void *page);
 
 #endif
