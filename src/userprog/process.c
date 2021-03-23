@@ -490,63 +490,45 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (ofs % PGSIZE == 0);
 
   file_seek (file, ofs);
-  while (read_bytes > 0 || zero_bytes > 0) 
+  while (read_bytes > 0 || zero_bytes > 0)
+  {
+    /* Calculate how to fill this page.
+        We will read PAGE_READ_BYTES bytes from FILE
+        and zero the final PAGE_ZERO_BYTES bytes. */
+    size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+    struct sup_page_table_entry *spte = malloc(sizeof(struct sup_page_table_entry));
+    if (spte == NULL)
     {
-      /* Calculate how to fill this page.
-         We will read PAGE_READ_BYTES bytes from FILE
-         and zero the final PAGE_ZERO_BYTES bytes. */
-      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-      size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-      struct sup_page_table_entry *spte = malloc(sizeof(struct sup_page_table_entry));
-      if (spte == NULL)
-      {
-        /* Pool full */
-        return false;
-      }
-
-      /* Fill out the page table entry */
-      spte->owner = thread_current();
-      spte->upage = upage;
-      spte->type = PAGE_CODE;
-      spte->in_swap = false;
-      spte->writable = writable;
-
-      /* Get a frame base and zero the bytes */
-      uint8_t *kpage = ft_allocate(PAL_USER | PAL_ZERO);
-
-      if (kpage == NULL) {
-        free (spte);
-        return false;
-      }
-      
-      /* Write the code into the frame */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-      {
-        ft_free_page (kpage);
-        free (spte);
-        return false; 
-      }
-
-      struct frame_table_entry *fte = ft_find_page (kpage);
-      fte->spte = spte;
-
-      /* Add the page to the process's address space. */
-      if (!install_page(upage, kpage, writable))
-      {
-        ft_free_page (kpage);
-        free (spte);
-        return false; 
-      }
-
-      /* Add the code page to the process' sup page table */
-      list_push_back (&spte->owner->sup_page_table, spte);
-
-      /* Advance. */
-      read_bytes -= page_read_bytes;
-      zero_bytes -= page_zero_bytes;
-      upage += PGSIZE;
+      /* Pool full */
+      PANIC(">> Failed to allocate spte to set up code LOD");
+      return false;
     }
+
+    /* Fill out the page table entry */
+    spte->owner = thread_current();
+    spte->upage = upage;
+    spte->type = PAGE_CODE;
+    spte->in_swap = false;
+    spte->writable = writable;
+    spte->file = file;
+    spte->file_offset = ofs;
+    spte->page_read_bytes = page_read_bytes;
+    spte->page_zero_bytes = page_zero_bytes;
+
+    /* Add the code page to the process' sup page table */
+    list_push_back(&spte->owner->sup_page_table, &spte->elem);
+
+    /* Advance. */
+    read_bytes -= page_read_bytes;
+    zero_bytes -= page_zero_bytes;
+    ofs += PGSIZE;
+    upage += PGSIZE;
+  }
+
+  /* After done, seek to the end of the code */
+  file_seek(file, ofs);
   return true;
 }
 

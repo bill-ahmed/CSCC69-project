@@ -179,15 +179,12 @@ ft_clear_thread_pages()
   {
     fte = list_entry (elem, struct frame_table_entry, elem);
     
-    if(fte->spte->type == PAGE_STACK && fte->owner == curr)
+    if(fte->owner == curr)
     {
       list_remove(&fte->elem);
       palloc_free_page(fte->page);
 
       spt_remove_entry(fte->spte);
-
-      // TODO: Free it also! This breaks atm...
-      // free(fte);
     }
   }
 }
@@ -199,6 +196,9 @@ ft_find_evict_page()
   struct list_elem *elem;
   struct frame_table_entry *fte;
 
+  if (!lock_held_by_current_thread (&frame_table_lock))
+    lock_acquire (&frame_table_lock);
+
   for(
     elem =  list_begin (&frame_table_list); 
     elem != list_end (&frame_table_list); 
@@ -209,8 +209,12 @@ ft_find_evict_page()
     if(!fte->spte)
       continue;
     
-    if(!pagedir_is_accessed (thread_current ()->pagedir, fte->page) && fte->spte->writable && !fte->pinned)
+    if(fte->spte->writable && !fte->pinned)
+    {
+      fte->pinned = true;
+      lock_release(&frame_table_lock);
       return fte;
+    }
   }
 
   // Take first writable frame
@@ -221,10 +225,17 @@ ft_find_evict_page()
   )
   {
     fte = list_entry (elem, struct frame_table_entry, elem);
-    if(fte->spte->writable && !fte->pinned)
+    if(!fte->pinned)
+    {
+      fte->pinned = true;
+      lock_release(&frame_table_lock);
       return fte;
+    }
   }
 
   // No page to evict found, remove first one
-  return list_entry (list_begin (&frame_table_list), struct frame_table_entry, elem);
+  fte = list_entry (list_begin (&frame_table_list), struct frame_table_entry, elem);
+  fte->pinned = true;
+  lock_release(&frame_table_lock);
+  return fte;
 }

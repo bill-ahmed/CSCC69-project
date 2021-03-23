@@ -10,6 +10,7 @@
 #include "threads/synch.h"
 #include "process.h"
 #include "pagedir.h"
+#include "vm/page.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -159,8 +160,36 @@ syscall_handler (struct intr_frame *f)
       
       validate_user_address (fd_addr);      
       validate_user_address (buff_addr);
-      validate_user_address ((void*) *buff_addr);
       validate_user_address (buff_size);
+
+      void *fault_addr = pg_round_down((void*) *buff_addr);
+      void *starting_addr = pg_round_down((void*) *buff_addr);
+
+      // Basic check, should not exceed user memory
+      if(!is_user_vaddr(fault_addr))
+        exit(-1);
+
+      // Need to check if we're trying to access more of the stack
+      if ((PHYS_BASE - fault_addr) <= THREAD_MAX_STACK_SIZE 
+         && (uint32_t *)fault_addr >= (f->esp - 32))
+      {
+        // Since buff_size is arbitrary, we keep growing until we can 
+        // fit the entire file.
+        while(fault_addr <= pg_round_up(starting_addr + *buff_size))
+        {
+          // Check we don't already have an entry here!
+          if(spt_get_entry(fault_addr))
+            continue;
+          
+          // Growth the stack and make sure it succeeded
+          spt_grow_stack_by_one(fault_addr);
+          validate_user_address (fault_addr);
+          
+
+          // Keep incrementing until we hit minimum required pages
+          fault_addr = pg_round_down(fault_addr + PGSIZE);
+        }
+      }
 
       f->eax = read (*fd_addr, *buff_addr, *buff_size);
       break;
@@ -242,6 +271,10 @@ validate_user_address (void *addr)
     exit (-1);
     return;
   }
+
+  // Check if we have a SPTE for addr
+  if(spt_get_entry(addr) != NULL)
+    return;
 
   // Make sure address belongs to process' virtual address space,
   // and has been mapped already.

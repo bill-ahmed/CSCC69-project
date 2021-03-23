@@ -189,13 +189,17 @@ page_fault (struct intr_frame *f)
          /* Otherwise not in swap, switch over cases */
          else
          {
-            /* MMAP */
+            /* Code load on demand */
+            if (spte->type == PAGE_CODE)
+            {
+               loaded_successfully = spt_load_from_file(spte);
+            }
          }
          
          /* If we have swapped or loaded something into memory properly, we can return */
          if (loaded_successfully)
          {
-            return;
+          return;
          }
 
       }
@@ -213,6 +217,7 @@ page_fault (struct intr_frame *f)
          else
          {
             /* This fault_addr is funky and we should exit? I think */
+            // printf(">> Bad addr: %p, round down: %p\n", fault_addr, pg_round_down(fault_addr));
             exit (-1);
          }  
       }
