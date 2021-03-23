@@ -149,11 +149,25 @@ FRM-TBL-Entry    SP-PG-TBL-Entry
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+/* In page.h */
 struct sup_page_table_entry
 {
 	bool in_swap;		/* Whether has been swapped out */
 	Int swap_index;		/* Which block sector this page is in the swap disk. */
 }
+
+/* In swap.h */
+// Synchronize writing to swap
+struct block* global_swap;
+
+// Prevent reading/writing at the same time!
+struct lock swap_modify_lock;
+// Maximum number of entries that can be swapped
+#define MAX_SWAP_ENTRIES 1024
+
+// Number of blocks to write in order to fit a single page.
+#define BLOCKS_IN_SWAP (PGSIZE / BLOCK_SECTOR_SIZE)
+
 
 ---- ALGORITHMS ----
 
@@ -229,6 +243,8 @@ We decided to introduce locks in key areas of our VM implementation. These areas
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
 
+In the case of swap pages, the contents can be written to the swap disk and retrieved at a later time. A mmap implementation is different in that paging its contents writes them back to the file, instead of the swap disk. With this implementation we would need to keep track of the file it originated from as well as its offset in order to correctly save it back to disk. During the eviction process, therefore, we would need a special consideration for memory mapped files by writing them to their respective file at the correct index, and then freeing their frame table/supplemental table entries.
+
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
 
@@ -240,6 +256,8 @@ We decided to introduce locks in key areas of our VM implementation. These areas
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+
+Our implementation would share much of the code with data demand-paged from executables because it simplifies the boilerplate code needed to setup. By utilizing similar constructs and synchronization we could ensure a more robust implementation that’s both easy to follow and debug. Since writing more synchronization logic (and code in general) would increase the surface-area for potential deadlocks, reusing a similar implementation also helps to prevent this from happening.
 
            	SURVEY QUESTIONS
            	================
