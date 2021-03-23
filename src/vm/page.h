@@ -28,6 +28,12 @@ struct sup_page_table_entry
     bool writable;              /* Whether able to be written (modified) to */
     enum page_type type;        /* One of PAGE_STACK, PAGE_CODE, etc */
 
+    /* Load on demand data */
+    struct file *file;      /* The file to grab data from */
+    off_t file_offset;      /* Where this page starts in the file */
+    size_t page_read_bytes; /* Number of bytes of data to read */
+    size_t page_zero_bytes; /* Number of bytes to fill with zeros */
+
     int swap_index;             /* Which block sector this page is in the swap disk. */
     struct thread *owner;       /* The owner of the spte */
     

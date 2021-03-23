@@ -184,12 +184,20 @@ page_fault (struct intr_frame *f)
          {
             /* Swap into a frame */            
             loaded_successfully = swap_into_memory (spte);
+            if (!loaded_successfully)
+               printf(">> Failed call to swap_into_memory \n");
          }
 
          /* Otherwise not in swap, switch over cases */
          else
          {
-            /* MMAP */
+            /* Code load on demand */
+            if (spte->type == PAGE_CODE)
+            {
+               loaded_successfully = spt_load_from_file(spte);
+               if (!loaded_successfully)
+                  printf(">> Failed call to spt_load_from_file \n");
+            }
          }
          
          /* If we have swapped or loaded something into memory properly, we can return */
@@ -209,10 +217,13 @@ page_fault (struct intr_frame *f)
          {
             /* Grow the stack by one page */
             loaded_successfully = spt_grow_stack_by_one(fault_addr);
+            if (!loaded_successfully)
+               printf(">> Failed call to spt_grow_stack_by_one \n");
          }
          else
          {
             /* This fault_addr is funky and we should exit? I think */
+            printf(">> Bad addr: %p\n", fault_addr);
             exit (-1);
          }  
       }
@@ -220,11 +231,15 @@ page_fault (struct intr_frame *f)
  
    if (!loaded_successfully) 
    {
-      // printf ("Page fault at %p: %s error %s page in %s context.\n",
-      //        fault_addr,
-      //        not_present ? "not present" : "rights violation",
-      //        write ? "writing" : "reading",
-      //        user ? "user" : "kernel");
+      printf ("Page fault at %p: %s error %s page in %s context.\n",
+             fault_addr,
+             not_present ? "not present" : "rights violation",
+             write ? "writing" : "reading",
+             user ? "user" : "kernel");
+
+      printf (">> Bad addr: %p\n", fault_addr);
+      //printf (">> Accessed by: %s\n", user ? "User" : "Kernel");
+      printf (">> Did not load successfully\n");
       exit (-1);
    }
 }

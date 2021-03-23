@@ -54,11 +54,46 @@ void spt_remove_entry (struct sup_page_table_entry *spte)
 bool 
 spt_load_from_file (struct sup_page_table_entry *spte)
 {
-    bool success = false;
 
-    /* Set the flags for user page */
-    enum palloc_flags flags = PAL_USER;
+    /* Get a frame base and zero the bytes */
+    uint8_t *kpage = ft_allocate(PAL_USER | PAL_ZERO);
+    struct frame_table_entry *fte = ft_find_page(kpage);
 
+    fte->pinned = true;
+
+    if (kpage == NULL)
+    {
+        ft_free_page(kpage);
+        return false;
+    }
+
+    /* Write the code into the frame */
+    if (spte->page_read_bytes != 0)
+    {
+        file_seek(spte->file, spte->file_offset);
+        if (file_read(spte->file, kpage, spte->page_read_bytes) != (int)spte->page_read_bytes)
+        {
+            ft_free_page(kpage);
+            PANIC(">> Failed to read code from: %p, at vaddr: %p, paddr: %p", spte->file, spte->upage, kpage);
+            return false;
+        }
+
+        /* We don't need to worry about filling the rest with zero since we get a zeroed page */
+    }
+
+    /* If the page_read_bytes is 0, then we return a zeroed page (nothing is written to it) */
+    fte->spte = spte;
+
+    /* Add the page to the process's address space. */
+    if (!install_page(spte->upage, kpage, spte->writable))
+    {
+        ft_free_page(kpage);
+        free(spte);
+        return false;
+    }
+
+    fte->pinned = false;
+    return true;
 }
 
 /* Load given supplemental page entry into memory. Returns 
