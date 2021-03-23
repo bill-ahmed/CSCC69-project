@@ -178,12 +178,12 @@ syscall_handler (struct intr_frame *f)
         while(fault_addr <= pg_round_up(starting_addr + *buff_size))
         {
           // Check we don't already have an entry here!
-          if(spt_get_entry(fault_addr))
-            continue;
-          
-          // Growth the stack and make sure it succeeded
-          spt_grow_stack_by_one(fault_addr);
-          validate_user_address (fault_addr);
+          if(!spt_get_entry(fault_addr))
+          {
+            // Growth the stack and make sure it succeeded
+            spt_grow_stack_by_one(fault_addr);
+            validate_user_address (fault_addr);
+          }
 
           // Keep incrementing until we hit minimum required pages
           fault_addr = pg_round_down(fault_addr + PGSIZE);
