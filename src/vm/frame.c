@@ -181,14 +181,10 @@ ft_clear_thread_pages()
     
     if(fte->owner == curr)
     {
-      // printf(">> %s-%d Removing fte from thread pages.\n", curr->process_name, curr->tid);
       list_remove(&fte->elem);
       palloc_free_page(fte->page);
 
       spt_remove_entry(fte->spte);
-
-      // TODO: Free it also! This breaks atm...
-      // free(fte);
     }
   }
 }
