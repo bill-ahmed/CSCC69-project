@@ -217,7 +217,7 @@ page_fault (struct intr_frame *f)
          else
          {
             /* This fault_addr is funky and we should exit? I think */
-            // printf(">> Bad addr: %p\n", fault_addr);
+            // printf(">> Bad addr: %p, round down: %p\n", fault_addr, pg_round_down(fault_addr));
             exit (-1);
          }  
       }
