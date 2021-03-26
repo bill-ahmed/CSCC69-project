@@ -6,11 +6,11 @@ on:
     branches: [ master ]
 
 jobs:
-  test-userprog:
+  test-filesys-check:
     runs-on: ubuntu-latest
     container:
       image: thierrysans/pintos
     steps:
-    - name: Build and test VM
+    - name: Build and test Filesys
       uses: actions/checkout@v2
-    - run: cd src/vm && make clean && make check
+    - run: cd src/filesys && make clean && make check
