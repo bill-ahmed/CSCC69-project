@@ -11,6 +11,7 @@
 #include "process.h"
 #include "pagedir.h"
 #include "vm/page.h"
+#include "filesys/inode.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -399,6 +400,7 @@ create (const char *file, unsigned initial_size)
 bool 
 remove (const char *file)
 {
+  // TODO: Allow directory deletion as well
   return filesys_remove (file);
 }
 
@@ -410,6 +412,9 @@ open (const char *file_name)
     return -1;
 
   lock_acquire(&filesys_lock);
+
+  // TODO: Allow directory opening as well
+
   struct file *file = filesys_open(file_name);
   lock_release(&filesys_lock);
 
@@ -425,6 +430,8 @@ close (int fd)
   exit_if_null (fd);
   struct file* file = thread_get_file_by_fd (fd);
   exit_if_null (file);
+
+  // TODO: Allow directory closing as well
 
   thread_remove_descriptor (fd);
   file_close (file);
@@ -531,6 +538,9 @@ mkdir (const char *dir)
 bool
 readdir (int fd, char *name)
 {
+  struct file* file = thread_get_file_by_fd (fd);
+  exit_if_null (file);
+
   /* TODO */
   return true;
 }
@@ -538,13 +548,17 @@ readdir (int fd, char *name)
 bool
 isDir (int fd)
 {
-  /* TODO */
-  return true;
+  struct file* file = thread_get_file_by_fd (fd);
+  exit_if_null (file);
+
+  return inode_is_dir (file_get_inode (file)->sector);
 }
 
 int
 iNumber (int fd)
 {
-  /* TODO */
-  return 0;
+  struct file* file = thread_get_file_by_fd (fd);
+  exit_if_null (file);
+
+  return file_get_inode (file)->sector;
 }
