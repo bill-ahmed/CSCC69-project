@@ -10,6 +10,12 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
+/* What the inode represents */
+enum inode_type {
+  INODE_TYPE_FILE,
+  INODE_TYPE_DIR,
+};
+
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
@@ -17,7 +23,8 @@ struct inode_disk
     block_sector_t start;               /* First data sector. */
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
-    uint32_t unused[125];               /* Not used. */
+    enum inode_type type;               /* The type of inode */
+    uint32_t unused[124];               /* Not used. */
   };
 
 /* Returns the number of sectors to allocate for an inode SIZE

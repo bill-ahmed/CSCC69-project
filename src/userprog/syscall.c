@@ -33,6 +33,12 @@ int write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);
 
+bool chdir (const char *dir);
+bool mkdir (const char *dir);
+bool readdir (int fd, char *name);
+
+bool isDir (int fd);
+int iNumber (int fd);
 
 // Helper prototypes
 void* get_stack_arg (void *esp, int offset);
@@ -239,6 +245,52 @@ syscall_handler (struct intr_frame *f)
       // No need to synchronize since fds are process dependent.
       close (*fd);
       break;
+    }
+
+    case SYS_CHDIR:
+    {
+      int *dir_addr = f->esp + 4;
+      validate_user_address (dir_addr);
+      validate_user_address ((void*) *dir_addr);
+
+      f->eax = chdir (*dir_addr);
+    }
+
+    case SYS_MKDIR:
+    {
+      int *dir_addr = f->esp + 4;
+      validate_user_address (dir_addr);
+      validate_user_address ((void*) *dir_addr);
+
+      f->eax = mkdir (*dir_addr);
+    }
+
+    case SYS_READDIR:
+    {
+      int *fd_addr = f->esp + 4;
+      int *buff_addr = f->esp + 8;
+
+      validate_user_address (fd_addr);
+      validate_user_address (buff_addr);
+      validate_user_address ((void*) *buff_addr);
+
+      f->eax = readdir (*fd_addr, *buff_addr);
+    }
+
+    case SYS_ISDIR:
+    {
+      int *fd_addr = f->esp + 4;
+      validate_user_address (fd_addr);
+
+      f->eax = isDir (*fd_addr);
+    }
+
+    case SYS_INUMBER:
+    {
+      int *fd_addr = f->esp + 4;
+      validate_user_address (fd_addr);
+
+      f->eax = iNumber (*fd_addr);
     }
 
     // Unhandled case
@@ -460,4 +512,39 @@ tell (int fd)
   exit_if_null (file);
 
   return file_tell (file);
+}
+
+bool
+chdir (const char *dir)
+{
+  /* TODO */
+  return true;
+}
+
+bool
+mkdir (const char *dir)
+{
+  /* TODO */
+  return true;
+}
+
+bool
+readdir (int fd, char *name)
+{
+  /* TODO */
+  return true;
+}
+
+bool
+isDir (int fd)
+{
+  /* TODO */
+  return true;
+}
+
+int
+iNumber (int fd)
+{
+  /* TODO */
+  return 0;
 }
