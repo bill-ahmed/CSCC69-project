@@ -19,7 +19,7 @@ struct dir_entry
 bool
 dir_create (block_sector_t sector, size_t entry_cnt)
 {
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+  return inode_create (sector, entry_cnt * sizeof (struct dir_entry), NULL, NULL);
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -226,4 +226,63 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
         } 
     }
   return false;
+}
+
+/* Resolve PATH beginning at directory START.
+   THIS WILL MODIFY PATH!!
+   Returns the last element if parsing is successful, NULL otherwise
+   Stores last segment accessed in LAST_SEGMENT, if provided */
+struct dir *
+resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
+{
+  char *token, *save_ptr;
+  char failed_at[NAME_MAX + 1];
+  
+  bool failed_once = false;
+
+  struct dir *cwd = start;
+  struct dir *prev_cwd = start;
+
+  for (token = strtok_r (path, "/", &save_ptr); token != NULL; token = strtok_r (NULL, "/", &save_ptr))
+  {
+    // Token can be one of: '.', '..', or a directory name
+    if(strlen(token) > NAME_MAX)
+      return NULL;
+    
+    // Current directory
+    if (!strcmp (token, "."))
+    {
+      printf(">> Same directory, continuing...\n");
+      continue;
+    }
+    else if(!strcmp (token, ".."))
+    {
+      // Previous directory
+      printf(">> Previous directory!\n");
+    }
+    else
+    {
+      // A directory to go into
+      printf(">> [mkdir] going into: %s\n", token);
+      strlcpy (last_segment, token, strlen(token) + 1);
+
+      cwd = dir_open (filesys_open_dir (token, cwd));
+      if(cwd == NULL)
+      {
+        if(!failed_once)
+        {
+          strlcpy (failed_at, token, strlen(token) + 1);
+          failed_once = true;
+        }
+        continue;
+      }
+      
+      prev_cwd = cwd;
+    }
+  }
+
+  if(!strcmp (failed_at, last_segment))
+    return prev_cwd;
+
+  return NULL;
 }

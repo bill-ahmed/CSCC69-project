@@ -49,7 +49,24 @@ filesys_create (const char *name, off_t initial_size)
   struct dir *dir = dir_open_root ();
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size)
+                  && inode_create (inode_sector, initial_size, NULL, NULL)
+                  && dir_add (dir, name, inode_sector));
+  if (!success && inode_sector != 0) 
+    free_map_release (inode_sector, 1);
+  dir_close (dir);
+
+  return success;
+}
+
+/* Same as filesys_create, but pass in your own directory and allow
+   creating directories too. */
+bool
+filesys_create_at_dir (const char *name, off_t initial_size, struct dir *dir, bool isDir)
+{
+  block_sector_t inode_sector = 0;
+  bool success = (dir != NULL
+                  && free_map_allocate (1, &inode_sector)
+                  && inode_create (inode_sector, initial_size, isDir, dir->inode->sector)
                   && dir_add (dir, name, inode_sector));
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
