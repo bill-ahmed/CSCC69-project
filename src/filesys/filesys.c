@@ -46,7 +46,8 @@ bool
 filesys_create (const char *name, off_t initial_size) 
 {
   block_sector_t inode_sector = 0;
-  struct dir *dir = dir_open_root ();
+  struct dir *dir = resolve_path (name, dir_open_root (), NULL);
+  // struct dir *dir = dir_open_root ();
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, NULL, NULL)
@@ -94,7 +95,7 @@ filesys_open (const char *name)
 }
 
 /* Same as filesys_open, pass in your own starting dir. */
-struct file *
+struct dir *
 filesys_open_dir (const char *name, struct dir *dir)
 {
   struct inode *inode = NULL;
@@ -102,7 +103,7 @@ filesys_open_dir (const char *name, struct dir *dir)
     dir_lookup (dir, name, &inode);
   dir_close (dir);
 
-  return file_open (inode);
+  return dir_open (inode);
 }
 
 /* Deletes the file named NAME.

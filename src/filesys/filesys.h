@@ -15,8 +15,9 @@ extern struct block *fs_device;
 void filesys_init (bool format);
 void filesys_done (void);
 bool filesys_create (const char *name, off_t initial_size);
+bool filesys_create_at_dir (const char *name, off_t initial_size, struct dir *dir, bool isDir);
 struct file *filesys_open (const char *name);
-struct file *filesys_open_dir (const char *name, struct dir *dir);
+struct dir *filesys_open_dir (const char *name, struct dir *dir);
 bool filesys_remove (const char *name);
 
 #endif /* filesys/filesys.h */

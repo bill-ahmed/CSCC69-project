@@ -670,6 +670,13 @@ thread_get_file_by_fd (int fd)
   return thread_current ()->open_descriptors[fd - 2];
 }
 
+struct dir *
+thread_cwd()
+{
+  struct thread *curr = thread_current ();
+  return curr->cwd ? curr->cwd : dir_open_root ();
+}
+
 void 
 thread_close_all_descriptors ()
 {

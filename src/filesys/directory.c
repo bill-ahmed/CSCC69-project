@@ -229,21 +229,29 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 }
 
 /* Resolve PATH beginning at directory START.
-   THIS WILL MODIFY PATH!!
    Returns the last element if parsing is successful, NULL otherwise
-   Stores last segment accessed in LAST_SEGMENT, if provided */
+   Stores last segment accessed in last, if provided */
 struct dir *
 resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
 {
+  char *path_cpy;
   char *token, *save_ptr;
+
+  char last[NAME_MAX + 1];
   char failed_at[NAME_MAX + 1];
   
+  // Make a copy of path so we don't modify it in strtok_r
+  path_cpy = malloc(sizeof(char) * strlen(path) + 1);
+  strlcpy (path_cpy, path, strlen(path) + 1);
+
   bool failed_once = false;
 
   struct dir *cwd = start;
   struct dir *prev_cwd = start;
 
-  for (token = strtok_r (path, "/", &save_ptr); token != NULL; token = strtok_r (NULL, "/", &save_ptr))
+  // TODO: Special case when path starts with root "/"
+
+  for (token = strtok_r (path_cpy, "/", &save_ptr); token != NULL; token = strtok_r (NULL, "/", &save_ptr))
   {
     // Token can be one of: '.', '..', or a directory name
     if(strlen(token) > NAME_MAX)
@@ -262,11 +270,8 @@ resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
     }
     else
     {
-      // A directory to go into
-      printf(">> [mkdir] going into: %s\n", token);
-      strlcpy (last_segment, token, strlen(token) + 1);
+      strlcpy (last, token, strlen(token) + 1);
 
-      cwd = dir_open (filesys_open_dir (token, cwd));
       if(cwd == NULL)
       {
         if(!failed_once)
@@ -276,12 +281,32 @@ resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
         }
         continue;
       }
+      else
+      {
+        // printf(">> [mkdir] going into: %s\n", token);
+        struct inode *inode = NULL;
+        if(dir_lookup (cwd, token, &inode))
+        {
+          // printf(">> cwd after lookup %p\n", cwd);
+          cwd = dir_open (inode);
+        }
+        else
+        {
+          cwd = NULL;
+          strlcpy (failed_at, token, strlen(token) + 1);
+          failed_once = true;
+        }
+      }
       
-      prev_cwd = cwd;
+      prev_cwd = cwd ? cwd : prev_cwd;
     }
   }
 
-  if(!strcmp (failed_at, last_segment))
+  if(last_segment)
+    strlcpy (last_segment, last, NAME_MAX + 1);
+
+  // printf("Failed at: %s, last: %s, prev_cwd: %p, start: %p\n", failed_at, last, prev_cwd, start);
+  if(!strcmp (failed_at, last))
     return prev_cwd;
 
   return NULL;

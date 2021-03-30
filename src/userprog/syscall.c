@@ -395,6 +395,7 @@ wait (int pid)
 bool 
 create (const char *file, unsigned initial_size)
 {
+  printf (">> [create] Creating file: %s\n", file);
   return filesys_create (file, initial_size);
 }
 
@@ -525,6 +526,7 @@ tell (int fd)
 bool
 chdir (char *dir)
 {
+  printf(">> [chdir] Change to: %s\n", dir);
   /* TODO */
   return true;
 }
@@ -535,30 +537,25 @@ mkdir (char *dir)
   bool successful = false;
   char *dir_cpy;
 
-  // TODO: Start at thread's own cwd!
-  struct dir *cwd = dir_open_root ();
-
-  printf(">> [mkdir] Creating '%s', size: %d\n", dir, strlen(dir));
+  printf(">> [mkdir] Goal '%s', size: %d\n", dir, strlen(dir));
   if(strlen(dir) == 0)
     goto done;
   else
   {
-    // TODO: Special case when path starts with root "/"
-
     // Create copy of directory name
     dir_cpy = malloc (sizeof(char) * strlen(dir));
     strlcpy (dir_cpy, dir, strlen(dir) + 1);
 
     char t[NAME_MAX + 1];
-    struct dir *result = resolve_path (dir_cpy, cwd, t);
+    struct dir *result = resolve_path (dir_cpy, thread_cwd (), t);
     printf("got result %p\n", result);
     if(result)
     {
       printf(">> [mkdir] Creating directory in: %p\n", result);
       printf(">> [mkdir] Directory to create: %s\n", t);
 
-      // TODO: Create the directory
-      successful = true;
+      // Directories have zero size
+      successful = filesys_create_at_dir (t, 0, result, true);
     }
 
     free (dir_cpy);
@@ -567,6 +564,7 @@ mkdir (char *dir)
   }
   /* TODO */
   done:
+    printf(">> [mkdir] Created directory? %d\n", successful);
     return successful;
 }
 

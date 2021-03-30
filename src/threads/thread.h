@@ -178,6 +178,9 @@ struct thread * find_thread_by_tid (tid_t tid);
 
 int thread_get_next_descriptor (struct file *);
 struct file * thread_get_file_by_fd (int fd);
+
+struct dir * thread_cwd();
+
 void thread_close_all_descriptors ();
 void thread_remove_descriptor (int fd);
 
