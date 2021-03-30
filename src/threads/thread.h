@@ -130,6 +130,8 @@ struct thread
    /* Owned by userprog/process.c. */
    uint32_t *pagedir; /* Page directory. */
 
+   struct dir *cwd;                   /* Current-working directory. NULL implies root directory */
+
    /* Owned by thread.c. */
    unsigned magic;                     /* Detects stack overflow. */
 };

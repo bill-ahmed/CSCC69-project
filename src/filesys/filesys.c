@@ -76,6 +76,18 @@ filesys_open (const char *name)
   return file_open (inode);
 }
 
+/* Same as filesys_open, pass in your own starting dir. */
+struct file *
+filesys_open_dir (const char *name, struct dir *dir)
+{
+  struct inode *inode = NULL;
+  if(dir != NULL)
+    dir_lookup (dir, name, &inode);
+  dir_close (dir);
+
+  return file_open (inode);
+}
+
 /* Deletes the file named NAME.
    Returns true if successful, false on failure.
    Fails if no file named NAME exists,

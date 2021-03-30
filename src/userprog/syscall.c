@@ -12,6 +12,7 @@
 #include "pagedir.h"
 #include "vm/page.h"
 #include "filesys/inode.h"
+#include "filesys/directory.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -34,8 +35,8 @@ int write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);
 
-bool chdir (const char *dir);
-bool mkdir (const char *dir);
+bool chdir (char *dir);
+bool mkdir (char *dir);
 bool readdir (int fd, char *name);
 
 bool isDir (int fd);
@@ -522,17 +523,96 @@ tell (int fd)
 }
 
 bool
-chdir (const char *dir)
+chdir (char *dir)
 {
   /* TODO */
   return true;
 }
 
 bool
-mkdir (const char *dir)
+mkdir (char *dir)
 {
+  bool successful = false;
+  char *token, *save_ptr, *failed_at, *last;
+  failed_at = malloc(sizeof(char) * (NAME_MAX + 1));
+  last = malloc(sizeof(char) * (NAME_MAX + 1));
+
+  char *dir_cpy;
+  bool failed_once = false;
+
+  // TODO: Start at thread's own cwd!
+  struct dir *cwd = dir_open_root ();
+  struct dir *prev_cwd = cwd;
+
+  printf(">> [mkdir] Creating '%s', size: %d\n", dir, strlen(dir));
+  if(strlen(dir) == 0)
+    goto done;
+  else
+  {
+    // TODO: Special case when path starts with root "/"
+
+    // Create copy of directory name
+    dir_cpy = malloc (sizeof(char) * strlen(dir));
+    strlcpy (dir_cpy, dir, strlen(dir) + 1);
+
+    for (token = strtok_r (dir_cpy, "/", &save_ptr); token != NULL; token = strtok_r (NULL, "/", &save_ptr))
+    {
+      // Token can be one of: '.', '..', or a directory name
+      if(strlen(token) > NAME_MAX)
+        goto done;
+      
+      // Current directory
+      if (!strcmp (token, "."))
+      {
+        printf(">> continuing...\n");
+        continue;
+      }
+      else if(!strcmp (token, ".."))
+      {
+        // Previous directory
+        printf(">> previous directory\n");
+      }
+      else
+      {
+        // A directory to go into
+        printf(">> [mkdir] going into: %s\n", token);
+        strlcpy (last, token, strlen(token) + 1);
+
+        cwd = dir_open (filesys_open_dir (token, cwd));
+        if(cwd == NULL)
+        {
+          if(!failed_once)
+          {
+            strlcpy (failed_at, token, strlen(token) + 1);
+            failed_once = true;
+          }
+          continue;
+        }
+        
+        prev_cwd = cwd;
+      }
+    }
+
+    // If failed at the last directory, create it
+    // Otherwise, we tried to go into directory that doesn't exist, so it should return false!
+    if(!strcmp (failed_at, last))
+    {
+      printf(">> [mkdir] Creating directory in: %p\n", prev_cwd);
+      printf(">> [mkdir] Token: %s, failed_at: %s, last: %s\n", token, failed_at, last);
+
+      // TODO: Create the directory
+      successful = true;
+    }
+
+    free (dir_cpy);
+    free(failed_at);
+    free(last);
+
+    goto done;
+  }
   /* TODO */
-  return true;
+  done:
+    return successful;
 }
 
 bool
@@ -560,5 +640,5 @@ iNumber (int fd)
   struct file* file = thread_get_file_by_fd (fd);
   exit_if_null (file);
 
-  return file_get_inode (file)->sector;
+  return inode_get_inumber (file_get_inode (file)->sector);
 }

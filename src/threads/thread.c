@@ -13,6 +13,7 @@
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include "vm/swap.h"
+#include "filesys/directory.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/syscall.h"
@@ -497,6 +498,8 @@ init_thread (struct thread *t, const char *name, int priority)
   sema_init (&t->allow_exit_sema, 0);
 
   list_init(&t->sup_page_table);
+
+  t->cwd = NULL;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

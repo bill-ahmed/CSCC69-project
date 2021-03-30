@@ -55,6 +55,7 @@ process_execute (const char *file_name)
   {
     child = find_thread_by_tid (tid);
     child->parent = curr;
+    child->cwd = curr->cwd ? dir_reopen (curr->cwd) : NULL;
     list_push_back (&curr->child_threads, &child->child_elem);
   }
     
@@ -161,6 +162,7 @@ process_wait (tid_t child_tid)
       return child->exit_status;
     }
 
+    child->cwd = curr->cwd;
     child->parent = curr;
     curr->waiting_on_child = child;
 

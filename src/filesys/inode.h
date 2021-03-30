@@ -19,10 +19,11 @@ enum inode_type {
 struct inode_disk
 {
   block_sector_t start;               /* First data sector. */
+  block_sector_t parent;              /* Sector number of parent, if type == INODE_TYPE_DIR, NULL otherwise. */
   off_t length;                       /* File size in bytes. */
   unsigned magic;                     /* Magic number. */
   enum inode_type type;               /* The type of inode */
-  uint32_t unused[124];               /* Not used. */
+  uint32_t unused[123];               /* Not used. */
 };
 
 /* In-memory inode. */
