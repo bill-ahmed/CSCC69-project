@@ -8,9 +8,8 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Bilal Ahmed bill.ahmed@mail.utoronto.ca
+Tanner Bergeron tanner.bergeron@mail.utoronto.ca
 
 ---- PRELIMINARIES ----
 
@@ -38,12 +37,44 @@ FirstName LastName <email@domain.example>
 >> A3: Explain how your code avoids a race if two processes attempt to
 >> extend a file at the same time.
 
+    Each time there is a write that would extend the length of a file,
+    we break up the write into one block at a time. This way no one
+    file can hog the resources or allocate itself the entire disk
+    blocking out other processes also trying to write data to the disk. 
+
+    The problem of two processes trying to extend their files at the
+    same time becomes straight forward to handle once what is explained
+    above is implemented. Since each user write is handled one block at
+    a time, if thread A needs to write to many many sectors, and at the
+    same time thread B only needs to write to one, then at the time
+    thread B is executing, it won't be blocked from grabbing a block to
+    write to, even if A is in the middle of trying to write many blocks
+    during it's write syscall.
+
 >> A4: Suppose processes A and B both have file F open, both
 >> positioned at end-of-file.  If A reads and B writes F at the same
 >> time, A may read all, part, or none of what B writes.  However, A
 >> may not read data other than what B writes, e.g. if B writes
 >> nonzero data, A is not allowed to see all zeros.  Explain how your
 >> code avoids this race.
+
+    There are two cases that would happen with our code, which depends
+    on which process is executing at the time of thier intended operation.
+
+    If A gets there first and sees no lock on that block, then it will 
+    read, see the EOF, and return having read "nothing". Then process B 
+    will be free to write and aquire the modification lock. The modification
+    lock will only stop other processes from *starting* a read/write, but
+    won't stop a reader from reading if it was already doing so at the time
+    another process aquires the modification lock. So if A starts a read
+    and then is interupted, and B aquires the lock and writes to that block.
+    Remember that the modification lock is per block so that the write call
+    doesn't gate other processes from reading entirely.
+    
+    If B gets there first and intends to write, it sets a lock on that
+    block and writes whatever data to that block and unlocks it 
+    afterwards. Like above, the other reading processes can read it
+    still as they would normally be able to do.
 
 >> A5: Explain how your synchronization design provides "fairness".
 >> File access is "fair" if readers cannot indefinitely block writers
@@ -52,6 +83,10 @@ FirstName LastName <email@domain.example>
 >> processes writing to a file cannot prevent another process forever
 >> from reading the file.
 
+    Is it fair because only one block per process is ever locked down for
+    modification at one time. This allows other readers to still have full
+    access to read from other areas of the file during a write.
+
 ---- RATIONALE ----
 
 >> A6: Is your inode structure a multilevel index?  If so, why did you
@@ -59,6 +94,12 @@ FirstName LastName <email@domain.example>
 >> indirect blocks?  If not, why did you choose an alternative inode
 >> structure, and what advantages and disadvantages does your
 >> structure have, compared to a multilevel index?
+
+    The inode structure we use is 10 direct block pointers, 1 indirect block
+    pointer, and 1 double-indirect block pointer. We feel this gives a good
+    balance between speedy access to smaller files while still supporting
+    file sizes up to about 8MB (plus whatever overhead is involved with storing
+    indirect blocks) by having one double-indirect block.
 
                 SUBDIRECTORIES
                 ==============
