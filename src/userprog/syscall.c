@@ -426,9 +426,12 @@ open (const char *file_name)
   lock_acquire(&filesys_lock);
 
   // TODO: Allow directory opening as well
-
-  struct file *file = filesys_open(file_name);
+  char t[NAME_MAX + 1];
+  struct dir *result = resolve_path (file_name, thread_cwd (), t);
+  struct file *file = filesys_open_dir(file_name, result);
   lock_release(&filesys_lock);
+  
+  printf(">> [open] Opened file: %p\n", file);
 
   if (file == NULL)
     return -1;
@@ -564,8 +567,9 @@ mkdir (char *dir)
       printf(">> [mkdir] Creating directory in: %p\n", result);
       printf(">> [mkdir] Directory to create: %s\n", t);
 
-      // Directories have zero size
-      successful = filesys_create_at_dir (t, 0, result, true);
+      // Directories one size for now, once file growth is done
+      // we should be able to change the '1' to a zero '0'
+      successful = filesys_create_at_dir (t, 1, result, true);
     }
 
     free (dir_cpy);

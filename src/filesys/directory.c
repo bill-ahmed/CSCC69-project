@@ -17,9 +17,9 @@ struct dir_entry
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool
-dir_create (block_sector_t sector, size_t entry_cnt)
+dir_create (block_sector_t sector, size_t entry_cnt, block_sector_t parent_sector)
 {
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry), NULL, NULL);
+  return inode_create (sector, entry_cnt * sizeof (struct dir_entry), true, parent_sector);
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -165,8 +165,9 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   e.in_use = true;
   strlcpy (e.name, name, sizeof e.name);
   e.inode_sector = inode_sector;
-  success = inode_write_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
-
+  off_t t = inode_write_at (dir->inode, &e, sizeof e, ofs);
+  success = t == sizeof e;
+  printf(">> Dir Success: %d, bytes written: %d, sizeof e: %d, name: %s, dir: %p, sector: %d\n", success, t, sizeof e, name, dir, inode_sector);
  done:
   return success;
 }
