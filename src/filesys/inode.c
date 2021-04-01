@@ -1,5 +1,4 @@
 #include "filesys/inode.h"
-#include <list.h>
 #include <debug.h>
 #include <round.h>
 #include <string.h>
@@ -13,49 +12,33 @@
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
-  {
-    block_sector_t start;               /* First data sector. */
-    off_t length;                       /* File size in bytes. */
-    unsigned magic;                     /* Magic number. */
-    uint32_t unused[125];               /* Not used. */
-  };
-
-/* Returns the number of sectors to allocate for an inode SIZE
-   bytes long. */
-static inline size_t
-bytes_to_sectors (off_t size)
 {
-  return DIV_ROUND_UP (size, BLOCK_SECTOR_SIZE);
-}
+  /* The inode stored on disk is now sector indexes to
+      a direct or indirect data block */
+  block_sector_t data_blocks[12];       /*  */
+  unsigned magic;                       /* Magic number. */
+  off_t eof;                            /* Byte where the EOF is located. Filesize in bytes */
+  uint32_t unused[114];                 /* Not used. */
+  
+  /* (12 + 1 + 1 + 114) * 4 bytes each = 512 */
+};
 
 /* In-memory inode. */
-struct inode 
-  {
-    struct list_elem elem;              /* Element in inode list. */
-    block_sector_t sector;              /* Sector number of disk location. */
-    int open_cnt;                       /* Number of openers. */
-    bool removed;                       /* True if deleted, false otherwise. */
-    int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    struct inode_disk data;             /* Inode content. */
-  };
-
-/* Returns the block device sector that contains byte offset POS
-   within INODE.
-   Returns -1 if INODE does not contain data for a byte at offset
-   POS. */
-static block_sector_t
-byte_to_sector (const struct inode *inode, off_t pos) 
+struct inode
 {
-  ASSERT (inode != NULL);
-  if (pos < inode->data.length)
-    return inode->data.start + pos / BLOCK_SECTOR_SIZE;
-  else
-    return -1;
-}
+  struct list_elem elem;  /* Element in inode list. */
+  block_sector_t sector;  /* Sector number of disk location. */
+  int open_cnt;           /* Number of openers. */
+  bool removed;           /* True if deleted, false otherwise. */
+  int deny_write_cnt;     /* 0: writes ok, >0: deny writes. */
+  struct inode_disk data; /* Inode content. */
+};
 
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
 static struct list open_inodes;
+
+/* INODE FUNCTIONS */
 
 /* Initializes the inode module. */
 void
@@ -87,16 +70,28 @@ inode_create (block_sector_t sector, off_t length)
       size_t sectors = bytes_to_sectors (length);
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
+
+      /* For each sector we need to write to, free_map_allocate it
+        then mark is as being written to in the sectors_in_use list.
+        After done writing, remove it from the in use list. */
+      for (size_t sectors_left_to_write = sectors; sectors_left_to_write > 0; sectors_left_to_write--)
+      {
+
+      }
+
       if (free_map_allocate (sectors, &disk_inode->start)) 
         {
           block_write (fs_device, sector, disk_inode);
-          if (sectors > 0) 
-            {
-              static char zeros[BLOCK_SECTOR_SIZE];
-              size_t i;
-              
-              for (i = 0; i < sectors; i++) 
-                block_write (fs_device, disk_inode->start + i, zeros);
+          int bytes = length % BLOCK_SECTOR_SIZE;
+
+          printf(">> Created Inode at sector: %d, with length: %d sectors, and %d remaining bytes \n", disk_inode->start, sectors, bytes);
+          if (sectors > 0)
+          {
+            static char zeros[BLOCK_SECTOR_SIZE];
+            size_t i;
+
+            for (i = 0; i < sectors; i++)
+              block_write(fs_device, disk_inode->start + i, zeros);
             }
           success = true; 
         } 
@@ -138,6 +133,7 @@ inode_open (block_sector_t sector)
   inode->deny_write_cnt = 0;
   inode->removed = false;
   block_read (fs_device, inode->sector, &inode->data);
+  // inode->eof = inode->data.length ?
   return inode;
 }
 
@@ -251,9 +247,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
 
 /* Writes SIZE bytes from BUFFER into INODE, starting at OFFSET.
    Returns the number of bytes actually written, which may be
-   less than SIZE if end of file is reached or an error occurs.
-   (Normally a write at end of file would extend the inode, but
-   growth is not yet implemented.) */
+   less than SIZE if end of file is reached or an error occurs. */
 off_t
 inode_write_at (struct inode *inode, const void *buffer_, off_t size,
                 off_t offset) 
@@ -341,5 +335,111 @@ inode_allow_write (struct inode *inode)
 off_t
 inode_length (const struct inode *inode)
 {
-  return inode->data.length;
+  return inode->data.eof;
+}
+
+/* HELPERS */
+
+/* Returns the sector index stored in an indirect block, -1 if invalid */
+block_sector_t 
+indirect_sector_lookup(block_sector_t sector, uint32_t offset)
+{
+  ASSERT(offset < 128 && offset >= 0);
+
+  /* 128 * 4 byte numbers = 512 bytes */
+  block_sector_t *data = malloc(BLOCK_SECTOR_SIZE);
+  if (!data)
+  {
+    PANIC(">> malloc failed to allocate 512 bytes");
+    return -1;
+  }
+
+  block_read(fs_device, sector, data);
+  block_sector_t found_index = data[offset];
+  free(data);
+
+  /* We can use 0 to determine whether it is a valid sector 
+  since only ever the root dir is at 0. */
+  return (found_index == 0) ? -1 : found_index;
+}
+
+/* Returns the block device sector that contains byte offset POS
+   within INODE.
+   Returns -1 if INODE does not contain data for a byte at offset
+   POS. 
+   There is no need to synchronize this since all the indirect 
+   block data associated with a file at any pos <= EOF is static. */
+static block_sector_t
+byte_to_sector(const struct inode *inode, off_t pos)
+{
+  /*
+    data_blocks indexes:
+    - 0-9 are direct blocks
+    - 10 is an indirect block
+    - 11 is a double indirect block
+  */
+
+  ASSERT(inode != NULL);
+  if (pos > inode->data.eof)
+  {
+    /* There shouldn't be any data beyond the EOF */
+    return -1;
+  }
+
+  /* If the offset position pos is < EOF then we assume the
+     sectors are set up and indexed correctly */
+
+  block_sector_t file_sector_index = pos / BLOCK_SECTOR_SIZE;
+
+  /* Direct block index [0, 9] */
+  if (file_sector_index < 10)
+  {
+    return inode->data.data_blocks[file_sector_index];
+  }
+
+  /* Must be either direct or indirect */
+  else
+  {
+    file_sector_index -= 10;
+    
+    /* 1 level indirect [10] */
+    if (file_sector_index < 128)
+    {
+      return indirect_sector_lookup(inode->data.data_blocks[10], file_sector_index);
+    }
+
+    /* 2 level indirect [11] */
+    else
+    {
+      file_sector_index -= 128;
+      /* file_sector_index is now between 0 and 128*128=16384 */
+
+      /* From the double indirect block, we get the indirect sector index */
+      block_sector_t dbl_indirect_index = file_sector_index / 128;
+      block_sector_t indirect_idx = indirect_sector_lookup(inode->data.data_blocks[11], dbl_indirect_index);
+      if (indirect_idx == -1) {
+        return -1;
+      }
+
+      /* Using the indirect sector index, we get one of the 128 data blocks */
+      return indirect_sector_lookup(indirect_idx, file_sector_index % 128);
+    }
+  }
+}
+
+/* Returns the number of sectors to allocate for an inode SIZE
+   bytes long. */
+static inline size_t
+bytes_to_sectors(off_t size)
+{
+  return DIV_ROUND_UP(size, BLOCK_SECTOR_SIZE);
+}
+
+/* Allocates a sector in the file system and adds it to the
+   file's lookup blocks as necessary. Does not move file EOF */
+bool 
+extend_one_sector(struct inode *inode)
+{
+  
+  return false;
 }

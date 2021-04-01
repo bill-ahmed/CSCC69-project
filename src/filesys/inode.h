@@ -2,10 +2,22 @@
 #define FILESYS_INODE_H
 
 #include <stdbool.h>
+#include <list.h>
 #include "filesys/off_t.h"
 #include "devices/block.h"
 
 struct bitmap;
+
+/* List of sectors in the fs being written to atm */
+struct list sectors_in_use = LIST_INITIALIZER(sectors_in_use);
+
+/* Used to keep track of which sectors are being written
+to in the file system block */
+struct sector_lock
+{
+    block_sector_t sector;
+    struct list_elem elem;
+};
 
 void inode_init (void);
 bool inode_create (block_sector_t, off_t);
