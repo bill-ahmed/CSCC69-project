@@ -29,8 +29,41 @@ Tanner Bergeron tanner.bergeron@mail.utoronto.ca
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+/* In inode.h */
+/* List of sectors in the fs being written to atm */
+struct list sectors_in_use = LIST_INITIALIZER(sectors_in_use);
+
+/* Used to keep track of which sector is being written
+to in the file system block sectors_in_use list */
+struct sector_lock
+{
+    block_sector_t sector;
+    struct list_elem elem;
+};
+
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
+
+    Our inode stores in an array:
+    (1) 10 direct block sector indexes
+        - 10 * 512 bytes = 5KB (data)
+    (2) 1 indirect block sector index
+        - Each indirect block stores the indexes of 128 direct blocks
+        - 1 * 128 * 512 bytes = 64KB (data)
+        - With the one indirect block 512 bytes as overhead.
+    (3) 1 double indirect block sector index.
+        - The double indirect block points to 128 indirect blocks
+        - Each of those indirect blocks points to 128 direct blocks
+        - Each direct block stores 512 bytes of data.
+        - 1 * 128 * 128 * 512 bytes = 8MB (data)
+        - There are 128 indirect + 1 double indirect blocks (64.5KB) as overhead.
+
+    In total this means that a single file can store: 
+    8096 + 64 + 5 = 8165KB of data
+    while requiring 8165 + 64.5 + 0.5 = 8230KB total disk space to store that data.
+
+    This means that in our file system, assuming it is capped at 8MB, a single
+    file in pintos will never become absolutely full.
 
 ---- SYNCHRONIZATION ----
 
@@ -97,9 +130,9 @@ Tanner Bergeron tanner.bergeron@mail.utoronto.ca
 
     The inode structure we use is 10 direct block pointers, 1 indirect block
     pointer, and 1 double-indirect block pointer. We feel this gives a good
-    balance between speedy access to smaller files while still supporting
+    balance between speedy access to smaller files (<5KB) while still supporting
     file sizes up to about 8MB (plus whatever overhead is involved with storing
-    indirect blocks) by having one double-indirect block.
+    indirect blocks) by having access to one double-indirect block.
 
                 SUBDIRECTORIES
                 ==============
