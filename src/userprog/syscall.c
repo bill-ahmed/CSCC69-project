@@ -256,6 +256,7 @@ syscall_handler (struct intr_frame *f)
       validate_user_address ((void*) *dir_addr);
 
       f->eax = chdir (*dir_addr);
+      break;
     }
 
     case SYS_MKDIR:
@@ -265,6 +266,7 @@ syscall_handler (struct intr_frame *f)
       validate_user_address ((void*) *dir_addr);
 
       f->eax = mkdir (*dir_addr);
+      break;
     }
 
     case SYS_READDIR:
@@ -277,6 +279,7 @@ syscall_handler (struct intr_frame *f)
       validate_user_address ((void*) *buff_addr);
 
       f->eax = readdir (*fd_addr, *buff_addr);
+      break;
     }
 
     case SYS_ISDIR:
@@ -285,6 +288,7 @@ syscall_handler (struct intr_frame *f)
       validate_user_address (fd_addr);
 
       f->eax = isDir (*fd_addr);
+      break;
     }
 
     case SYS_INUMBER:
@@ -293,6 +297,7 @@ syscall_handler (struct intr_frame *f)
       validate_user_address (fd_addr);
 
       f->eax = iNumber (*fd_addr);
+      break;
     }
 
     // Unhandled case
@@ -395,8 +400,13 @@ wait (int pid)
 bool 
 create (const char *file, unsigned initial_size)
 {
-  printf (">> [create] Creating file: %s\n", file);
-  return filesys_create (file, initial_size);
+  char t[NAME_MAX + 1];
+  struct dir *result = resolve_path (file, thread_cwd (), t);
+  printf (">> [create] Creating file: %s of size %d at: %p\n", t, initial_size, result);
+  bool status = filesys_create_at_dir (t, initial_size, result, false);
+
+  printf(">> [create] Successful? %d\n", status);
+  return status;
 }
 
 bool 
@@ -562,9 +572,9 @@ mkdir (char *dir)
 
     goto done;
   }
-  /* TODO */
+
   done:
-    printf(">> [mkdir] Created directory? %d\n", successful);
+    printf(">> [mkdir] Created directory '%s'? %d\n", dir, successful);
     return successful;
 }
 
