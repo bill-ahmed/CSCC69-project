@@ -82,9 +82,10 @@ filesys_create_at_dir (const char *name, off_t initial_size, struct dir *dir, bo
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 struct file *
-filesys_open (const char *name)
+filesys_open (const char *name, struct dir *dir)
 {
-  struct dir *dir = dir_open_root ();
+  if (dir == NULL)
+    dir = dir_open_root ();
   struct inode *inode = NULL;
 
   if (dir != NULL)
@@ -92,19 +93,6 @@ filesys_open (const char *name)
   dir_close (dir);
 
   return file_open (inode);
-}
-
-/* Same as filesys_open, pass in your own starting dir. */
-struct dir *
-filesys_open_dir (const char *name, struct dir *dir)
-{
-  struct inode *inode = NULL;
-  if(dir != NULL)
-    dir_lookup (dir, name, &inode);
-  dir_close (dir);
-
-  printf(">> Opening file %s starting at directory %p. Got inode: %p\n", name, dir, inode);
-  return dir_open (inode);
 }
 
 /* Deletes the file named NAME.

@@ -167,7 +167,6 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   e.inode_sector = inode_sector;
   off_t t = inode_write_at (dir->inode, &e, sizeof e, ofs);
   success = t == sizeof e;
-  printf(">> Dir Success: %d, bytes written: %d, sizeof e: %d, name: %s, dir: %p, sector: %d\n", success, t, sizeof e, name, dir, inode_sector);
  done:
   return success;
 }
@@ -230,7 +229,7 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 }
 
 /* Resolve PATH beginning at directory START.
-   Returns the last element if parsing is successful, NULL otherwise
+   Returns the directory if parsing is successful, NULL otherwise
    Stores last segment accessed in last, if provided */
 struct dir *
 resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
@@ -261,13 +260,13 @@ resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
     // Current directory
     if (!strcmp (token, "."))
     {
-      printf(">> Same directory, continuing...\n");
+      // printf(">> Same directory, continuing...\n");
       continue;
     }
     else if(!strcmp (token, ".."))
     {
       // Previous directory
-      printf(">> Previous directory!\n");
+      // printf(">> Previous directory!\n");
     }
     else
     {
@@ -288,8 +287,9 @@ resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
         struct inode *inode = NULL;
         if(dir_lookup (cwd, token, &inode))
         {
+          if (inode->data.type == INODE_TYPE_DIR)
+            cwd = dir_open (inode);
           // printf(">> cwd after lookup %p\n", cwd);
-          cwd = dir_open (inode);
         }
         else
         {
@@ -310,5 +310,5 @@ resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
   if(!strcmp (failed_at, last))
     return prev_cwd;
 
-  return NULL;
+  return prev_cwd;
 }

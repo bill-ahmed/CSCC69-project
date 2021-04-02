@@ -88,7 +88,7 @@ start_process (void *file_name_)
   }
   else
   {    
-    curr->executable_file = filesys_open (file_name);
+    curr->executable_file = filesys_open (file_name, NULL);
     file_deny_write (curr->executable_file);
     
     curr->parent->child_exec_loaded = 1;
@@ -330,7 +330,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (file_name, NULL);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
