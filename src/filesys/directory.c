@@ -228,6 +228,24 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
   return false;
 }
 
+/* Standard C library, compare N characters of two strings. 
+   TODO: Refactor this... */
+int
+strncmp(const char *s1, const char *s2, register size_t n)
+{
+  register unsigned char u1, u2;
+  while (n-- > 0)
+    {
+      u1 = (unsigned char) *s1++;
+      u2 = (unsigned char) *s2++;
+      if (u1 != u2)
+        return u1 - u2;
+      if (u1 == '\0')
+        return 0;
+    }
+  return 0;
+}
+
 /* Resolve PATH beginning at directory START.
    Returns the directory if parsing is successful, NULL otherwise
    Stores last segment accessed in last, if provided */
@@ -246,12 +264,19 @@ resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
 
   bool failed_once = false;
 
+  // Reject empty path
+  if(!strcmp (path, ""))
+    return NULL;
+
+  // Special case when path starts with root "/"
+  if(!strncmp (path, "/", 1))
+    start = dir_open_root ();
+
   struct dir *cwd = start;
   struct dir *prev_cwd = start;
 
-  // TODO: Special case when path starts with root "/"
-
-  for (token = strtok_r (path_cpy, "/", &save_ptr); token != NULL; token = strtok_r (NULL, "/", &save_ptr))
+  token = strtok_r (path_cpy, "/", &save_ptr);
+  while (token != NULL)
   {
     // Token can be one of: '.', '..', or a directory name
     if(strlen(token) > NAME_MAX)
@@ -266,7 +291,7 @@ resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
     else if(!strcmp (token, ".."))
     {
       // Previous directory
-      // printf(">> Previous directory!\n");
+      printf(">> Previous directory!\n");
     }
     else
     {
@@ -283,13 +308,14 @@ resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
       }
       else
       {
-        // printf(">> [mkdir] going into: %s\n", token);
         struct inode *inode = NULL;
         if(dir_lookup (cwd, token, &inode))
         {
-          if (inode->data.type == INODE_TYPE_DIR)
+          if (is_dir (inode))
+          {
+            prev_cwd = cwd;
             cwd = dir_open (inode);
-          // printf(">> cwd after lookup %p\n", cwd);
+          }
         }
         else
         {
@@ -298,17 +324,23 @@ resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
           failed_once = true;
         }
       }
-      
-      prev_cwd = cwd ? cwd : prev_cwd;
     }
+    token = strtok_r (NULL, "/", &save_ptr);
   }
 
   if(last_segment)
     strlcpy (last_segment, last, NAME_MAX + 1);
 
-  // printf("Failed at: %s, last: %s, prev_cwd: %p, start: %p\n", failed_at, last, prev_cwd, start);
-  if(!strcmp (failed_at, last))
-    return prev_cwd;
-
   return prev_cwd;
+}
+
+
+/* True iff INODE represents a directory, false otherwise*/
+bool
+is_dir (struct inode *inode)
+{
+  if(inode == NULL)
+    return false;
+
+  return inode->data.type == INODE_TYPE_DIR;
 }

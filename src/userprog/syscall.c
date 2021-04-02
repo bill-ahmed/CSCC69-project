@@ -403,12 +403,12 @@ create (const char *file, unsigned initial_size)
   if(!strcmp (file, ""))
     exit (-1);
 
+  // Store last segment, i.e. name of file to create
   char t[NAME_MAX + 1];
+  
   struct dir *result = resolve_path (file, thread_cwd (), t);
-  // printf (">> [create] Creating file: %s of size %d at: %p\n", t, initial_size, result);
   bool status = filesys_create_at_dir (t, initial_size, result, false);
-
-  // printf(">> [create] Successful? %d\n", status);
+  
   return status;
 }
 
@@ -428,14 +428,13 @@ open (const char *file_name)
 
   lock_acquire(&filesys_lock);
 
-  // TODO: Allow directory opening as well
+  // Keep track of last segment, i.e. name of file/directory to open
   char t[NAME_MAX + 1];
+
   struct dir *result = resolve_path (file_name, thread_cwd (), t);
-  // printf(">> [open] Location of %s: %p\n", file_name, result);
-  struct file *file = filesys_open (file_name, result);
+  struct file *file = filesys_open (t, result);
+
   lock_release(&filesys_lock);
-  
-  // printf(">> [open] Opened file: %p\n", file);
 
   if (file == NULL)
     return -1;
@@ -453,7 +452,7 @@ close (int fd)
   // TODO: Allow directory closing as well
 
   thread_remove_descriptor (fd);
-  file_close (file);
+  is_dir (file_get_inode (file)) ? dir_close (file) : file_close (file);
   return 0;
 }
 
@@ -510,6 +509,10 @@ write (int fd, const void *buffer, unsigned size)
 
     struct file* file = thread_get_file_by_fd (fd);
     exit_if_null (file);
+    
+    // Can NOT write to directories!
+    if (is_dir (file_get_inode (file)))
+      exit (-1);
 
     // Make sure we're the only one 
     // writing to this file.
@@ -543,10 +546,8 @@ tell (int fd)
 bool
 chdir (char *dir)
 {
-  // printf(">> [chdir] Change to: %s\n", dir);
   struct dir *new_cwd = resolve_path (dir, thread_cwd (), NULL);
   thread_current ()->cwd = new_cwd;
-  // printf(">> [chdir] Changed to: %p\n", new_cwd);
 
   return new_cwd != NULL;
 }
@@ -557,7 +558,6 @@ mkdir (char *dir)
   bool successful = false;
   char *dir_cpy;
 
-  // printf(">> [mkdir] Goal '%s', size: %d\n", dir, strlen(dir));
   if(strlen(dir) == 0)
     goto done;
   else
@@ -568,12 +568,9 @@ mkdir (char *dir)
 
     char t[NAME_MAX + 1];
     struct dir *result = resolve_path (dir_cpy, thread_cwd (), t);
-    // printf("got result %p\n", result);
+
     if(result)
     {
-      // printf(">> [mkdir] Creating directory in: %p\n", result);
-      // printf(">> [mkdir] Directory to create: %s\n", t);
-
       // Directories fixed size for now, once file growth is done
       // we should be able to change the '16' to a zero '0'
       successful = filesys_create_at_dir (t, 16, result, true);
@@ -585,7 +582,6 @@ mkdir (char *dir)
   }
 
   done:
-    // printf(">> [mkdir] Created directory '%s'? %d\n", dir, successful);
     return successful;
 }
 

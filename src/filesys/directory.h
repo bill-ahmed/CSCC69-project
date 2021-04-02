@@ -38,4 +38,6 @@ bool dir_readdir (struct dir *, char name[NAME_MAX + 1]);
 
 struct dir * resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1]);
 
+bool is_dir (struct inode *inode);
+
 #endif /* filesys/directory.h */
