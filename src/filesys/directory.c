@@ -362,3 +362,35 @@ is_dir (struct inode *inode)
 
   return inode->data.type == INODE_TYPE_DIR;
 }
+
+/* Recursively print all directories/files in filesystem */
+void
+print_fs(struct dir *dir, int indent)
+{
+  printf("\n** Printing filesystem **\n\n");
+  print_fs_helper (dir, indent);
+  printf("\n** Done printing filesystem **\n\n");
+}
+
+void
+print_fs_helper (struct dir *dir, int indent)
+{
+  char name[NAME_MAX + 1];
+  struct inode *i;
+  bool success;
+
+  while (dir_readdir (dir, name))
+  {
+    int temp = indent;
+
+    dir_lookup (dir, name, &i);
+
+    while (temp-- > 0)
+      printf("-");
+      
+    printf("| %s%s\n", name, !is_dir (i) ? ".txt" : "");
+
+    if (is_dir (i))
+      print_fs_helper (dir_open (i), indent + 1);
+  }
+}

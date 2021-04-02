@@ -40,5 +40,6 @@ struct dir * dir_get_parent (struct dir *dir);
 struct dir * resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1], bool give_last);
 
 bool is_dir (struct inode *inode);
+void print_fs(struct dir *dir, int indent);
 
 #endif /* filesys/directory.h */
