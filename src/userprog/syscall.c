@@ -405,8 +405,12 @@ create (const char *file, unsigned initial_size)
 
   // Store last segment, i.e. name of file to create
   char t[NAME_MAX + 1];
+  struct inode *i;
+
+  struct dir *result = resolve_path (file, thread_cwd (), t, false);
+  if(result != NULL && dir_lookup (result, t, &i))
+    return false;
   
-  struct dir *result = resolve_path (file, thread_cwd (), t);
   bool status = filesys_create_at_dir (t, initial_size, result, false);
   
   return status;
@@ -431,15 +435,20 @@ open (const char *file_name)
   // Keep track of last segment, i.e. name of file/directory to open
   char t[NAME_MAX + 1];
 
-  struct dir *result = resolve_path (file_name, thread_cwd (), t);
+  struct dir *result = resolve_path (file_name, thread_cwd (), t, false);
+  struct dir *result_parent = dir_get_parent (result);
+
+  // Possible case: the parent of directory RESULT has name T
   struct file *file = filesys_open (t, result);
+  struct file *file_2 = filesys_open (t, result_parent);
+  struct inode *i;
 
   lock_release(&filesys_lock);
 
-  if (file == NULL)
+  if (file == NULL && file_2 == NULL)
     return -1;
 
-  return thread_get_next_descriptor (file);
+  return thread_get_next_descriptor (file ? file : file_2);
 }
 
 void 
@@ -546,7 +555,7 @@ tell (int fd)
 bool
 chdir (char *dir)
 {
-  struct dir *new_cwd = resolve_path (dir, thread_cwd (), NULL);
+  struct dir *new_cwd = resolve_path (dir, thread_cwd (), NULL, true);
   thread_current ()->cwd = new_cwd;
 
   return new_cwd != NULL;
@@ -567,7 +576,7 @@ mkdir (char *dir)
     strlcpy (dir_cpy, dir, strlen(dir) + 1);
 
     char t[NAME_MAX + 1];
-    struct dir *result = resolve_path (dir_cpy, thread_cwd (), t);
+    struct dir *result = resolve_path (dir_cpy, thread_cwd (), t, false);
 
     if(result)
     {

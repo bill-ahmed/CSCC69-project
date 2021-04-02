@@ -36,7 +36,8 @@ bool dir_add (struct dir *, const char *name, block_sector_t);
 bool dir_remove (struct dir *, const char *name);
 bool dir_readdir (struct dir *, char name[NAME_MAX + 1]);
 
-struct dir * resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1]);
+struct dir * dir_get_parent (struct dir *dir);
+struct dir * resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1], bool give_last);
 
 bool is_dir (struct inode *inode);
 

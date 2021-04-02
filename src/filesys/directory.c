@@ -228,6 +228,19 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
   return false;
 }
 
+/* Get parent of DIR. */
+struct dir *
+dir_get_parent (struct dir *dir)
+{
+  // printf("Opening parent at sector %d\n", dir->inode->data.type == INODE_TYPE_DIR);
+  // Root is its own parent!
+  block_sector_t parent = dir->inode->data.parent;
+  if(parent == NULL)
+    parent = ROOT_DIR_SECTOR;
+
+  return dir_open (inode_open (parent));
+}
+
 /* Standard C library, compare N characters of two strings. 
    TODO: Refactor this... */
 int
@@ -247,10 +260,13 @@ strncmp(const char *s1, const char *s2, register size_t n)
 }
 
 /* Resolve PATH beginning at directory START.
-   Returns the directory if parsing is successful, NULL otherwise
-   Stores last segment accessed in last, if provided */
+   Returns last accessible directory.
+   Stores last segment accessed in LAST_SEGMENT, if provided. 
+   
+   If GIVE_LAST is true, will return the last directory encountered, else the second-last one. 
+   This is useful for mkdir and chdir especially. */
 struct dir *
-resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
+resolve_path (char *path, struct dir *start, char last_segment[NAME_MAX + 1], bool give_last)
 {
   char *path_cpy;
   char *token, *save_ptr;
@@ -285,13 +301,13 @@ resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
     // Current directory
     if (!strcmp (token, "."))
     {
-      // printf(">> Same directory, continuing...\n");
       continue;
     }
     else if(!strcmp (token, ".."))
     {
       // Previous directory
-      printf(">> Previous directory!\n");
+      prev_cwd = cwd;
+      cwd = dir_get_parent (cwd);
     }
     else
     {
@@ -311,29 +327,31 @@ resolve_path(char *path, struct dir *start, char last_segment[NAME_MAX + 1])
         struct inode *inode = NULL;
         if(dir_lookup (cwd, token, &inode))
         {
+          prev_cwd = cwd;
           if (is_dir (inode))
-          {
-            prev_cwd = cwd;
             cwd = dir_open (inode);
-          }
         }
         else
         {
+          prev_cwd = cwd;
           cwd = NULL;
+
           strlcpy (failed_at, token, strlen(token) + 1);
           failed_once = true;
         }
       }
-    }
+    }  
     token = strtok_r (NULL, "/", &save_ptr);
   }
 
   if(last_segment)
     strlcpy (last_segment, last, NAME_MAX + 1);
 
+  if (give_last)
+    return cwd ? cwd : prev_cwd;
+
   return prev_cwd;
 }
-
 
 /* True iff INODE represents a directory, false otherwise*/
 bool
