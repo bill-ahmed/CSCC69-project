@@ -194,6 +194,10 @@ dir_remove (struct dir *dir, const char *name)
   if (inode == NULL)
     goto done;
 
+  // Make sure directory is empty!!
+  if (!dir_is_empty (dir_open (inode)))
+    return false;
+
   /* Erase directory entry. */
   e.in_use = false;
   if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e) 
@@ -241,6 +245,22 @@ dir_get_parent (struct dir *dir)
   return dir_open (inode_open (parent));
 }
 
+/* Returns true iff DIR has no contents (no files and 
+   no sub-directories). Returns false otherwise. */
+bool
+dir_is_empty (struct dir *dir)
+{
+  struct dir_entry e;
+  size_t ofs;
+
+  for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+       ofs += sizeof e)
+    if (e.in_use)
+      return false;
+  
+  return true;
+}
+
 /* Standard C library, compare N characters of two strings. 
    TODO: Refactor this... */
 int
@@ -272,13 +292,10 @@ resolve_path (char *path, struct dir *start, char last_segment[NAME_MAX + 1], bo
   char *token, *save_ptr;
 
   char last[NAME_MAX + 1];
-  char failed_at[NAME_MAX + 1];
   
   // Make a copy of path so we don't modify it in strtok_r
   path_cpy = malloc(sizeof(char) * strlen(path) + 1);
   strlcpy (path_cpy, path, strlen(path) + 1);
-
-  bool failed_once = false;
 
   // Reject empty path
   if(!strcmp (path, ""))
@@ -301,7 +318,7 @@ resolve_path (char *path, struct dir *start, char last_segment[NAME_MAX + 1], bo
     // Current directory
     if (!strcmp (token, "."))
     {
-      continue;
+      // Continue with while loop
     }
     else if(!strcmp (token, ".."))
     {
@@ -311,18 +328,10 @@ resolve_path (char *path, struct dir *start, char last_segment[NAME_MAX + 1], bo
     }
     else
     {
+      /* This token is a possible directory/file name. */
       strlcpy (last, token, strlen(token) + 1);
 
-      if(cwd == NULL)
-      {
-        if(!failed_once)
-        {
-          strlcpy (failed_at, token, strlen(token) + 1);
-          failed_once = true;
-        }
-        continue;
-      }
-      else
+      if (cwd != NULL)
       {
         struct inode *inode = NULL;
         if(dir_lookup (cwd, token, &inode))
@@ -333,22 +342,25 @@ resolve_path (char *path, struct dir *start, char last_segment[NAME_MAX + 1], bo
         }
         else
         {
+          // We've hit the end, stop updating cwd and prev_cwd
+          // We still continue parsing so we can make note of 
+          // the last segment that appears. This would indicate 
+          // the file name, directory to create, etc.
           prev_cwd = cwd;
           cwd = NULL;
-
-          strlcpy (failed_at, token, strlen(token) + 1);
-          failed_once = true;
         }
       }
-    }  
+    }
+
     token = strtok_r (NULL, "/", &save_ptr);
   }
 
   if(last_segment)
     strlcpy (last_segment, last, NAME_MAX + 1);
 
+  // printf("[resolve] give_last: %d, cwd: %p\n", give_last, cwd);
   if (give_last)
-    return cwd ? cwd : prev_cwd;
+    return cwd;
 
   return prev_cwd;
 }
@@ -367,7 +379,7 @@ is_dir (struct inode *inode)
 void
 print_fs(struct dir *dir, int indent)
 {
-  printf("\n** Printing filesystem **\n\n");
+  printf("\n** Printing filesystem %d **\n\n", dir->inode->sector);
   print_fs_helper (dir, indent);
   printf("\n** Done printing filesystem **\n\n");
 }
@@ -388,7 +400,7 @@ print_fs_helper (struct dir *dir, int indent)
     while (temp-- > 0)
       printf("-");
       
-    printf("| %s%s\n", name, !is_dir (i) ? ".txt" : "");
+    printf("| %s%s (%d)\n", name, !is_dir (i) ? ".txt" : "", i->sector);
 
     if (is_dir (i))
       print_fs_helper (dir_open (i), indent + 1);

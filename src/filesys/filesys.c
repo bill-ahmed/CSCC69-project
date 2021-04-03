@@ -108,6 +108,16 @@ filesys_remove (const char *name)
 
   return success;
 }
+
+/* Same as filesys_remove, but specify starting DIR. */
+bool 
+filesys_remove_at_dir (const char *name, struct dir *dir)
+{
+  bool success = dir != NULL && dir_remove (dir, name);
+  dir_close (dir); 
+
+  return success;
+}
 
 /* Formats the file system. */
 static void

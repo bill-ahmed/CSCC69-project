@@ -419,8 +419,13 @@ create (const char *file, unsigned initial_size)
 bool 
 remove (const char *file)
 {
-  // TODO: Allow directory deletion as well
-  return filesys_remove (file);
+  char t[NAME_MAX + 1];
+  struct dir *result = resolve_path (file, thread_cwd (), t, false);  
+  bool success = filesys_remove_at_dir (t, result);
+
+  // print_fs (dir_open_root (), 1);
+
+  return success;
 }
 
 int
@@ -521,13 +526,19 @@ write (int fd, const void *buffer, unsigned size)
     
     // Can NOT write to directories!
     if (is_dir (file_get_inode (file)))
+    {
+      // printf(">> [write] Tried writing to a file!\n");
       exit (-1);
+    }
+
+    // printf(">> [write] Writing to file %p\n", file);
 
     // Make sure we're the only one 
     // writing to this file.
     lock_acquire (&filesys_lock);
     new_size = file_write (file, buffer, size);
     lock_release (&filesys_lock);
+    // printf(">> [write] DONE writing to file %p. Wanted size: %d, actual: %d\n", file, size, new_size);
     return new_size;
   }
 }
@@ -556,7 +567,13 @@ bool
 chdir (char *dir)
 {
   struct dir *new_cwd = resolve_path (dir, thread_cwd (), NULL, true);
+  // printf(">> [chdir] Is new cwd a dir? %d\n", is_dir (new_cwd));
+  // printf(">> [chdir] Original cwd sector: %d\n", thread_cwd ()->inode->sector);
+
+  dir_close (thread_current ()->cwd);
   thread_current ()->cwd = new_cwd;
+
+  // printf(">> [chdir] New cwd sector: %d\n", thread_cwd ()->inode->sector);
 
   return new_cwd != NULL;
 }
@@ -600,8 +617,11 @@ readdir (int fd, char *name)
   struct file* file = thread_get_file_by_fd (fd);
   exit_if_null (file);
 
+  if(!is_dir (file))
+    return false;
+
   /* TODO */
-  return true;
+  return dir_readdir (file, name);
 }
 
 bool
@@ -610,7 +630,7 @@ isDir (int fd)
   struct file* file = thread_get_file_by_fd (fd);
   exit_if_null (file);
 
-  return inode_is_dir (file_get_inode (file)->sector);
+  return is_dir (file_get_inode (file));
 }
 
 int
@@ -619,5 +639,5 @@ iNumber (int fd)
   struct file* file = thread_get_file_by_fd (fd);
   exit_if_null (file);
 
-  return inode_get_inumber (file_get_inode (file)->sector);
+  return inode_get_inumber (file_get_inode (file));
 }

@@ -674,7 +674,7 @@ struct dir *
 thread_cwd()
 {
   struct thread *curr = thread_current ();
-  return curr->cwd ? curr->cwd : dir_open_root ();
+  return curr->cwd ? dir_reopen (curr->cwd) : dir_open_root ();
 }
 
 void 
