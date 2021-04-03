@@ -473,8 +473,6 @@ close (int fd)
   struct file* file = thread_get_file_by_fd (fd);
   exit_if_null (file);
 
-  // TODO: Allow directory closing as well
-
   thread_remove_descriptor (fd);
   is_dir (file_get_inode (file)) ? dir_close (file) : file_close (file);
   return 0;
@@ -624,7 +622,6 @@ readdir (int fd, char *name)
   if(!is_dir (file))
     return false;
 
-  /* TODO */
   return dir_readdir (file, name);
 }
 
