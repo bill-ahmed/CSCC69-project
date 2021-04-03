@@ -408,11 +408,14 @@ create (const char *file, unsigned initial_size)
   struct inode *i;
 
   struct dir *result = resolve_path (file, thread_cwd (), t, false);
+
+  if(result == NULL)
+    return false;
+
   if(result != NULL && dir_lookup (result, t, &i))
     return false;
   
   bool status = filesys_create_at_dir (t, initial_size, result, false);
-  
   return status;
 }
 
@@ -420,10 +423,8 @@ bool
 remove (const char *file)
 {
   char t[NAME_MAX + 1];
-  struct dir *result = resolve_path (file, thread_cwd (), t, false);  
+  struct dir *result = resolve_path (file, thread_cwd (), t, false);
   bool success = filesys_remove_at_dir (t, result);
-
-  // print_fs (dir_open_root (), 1);
 
   return success;
 }
@@ -441,7 +442,16 @@ open (const char *file_name)
   char t[NAME_MAX + 1];
 
   struct dir *result = resolve_path (file_name, thread_cwd (), t, false);
+  
+  if(result == NULL)
+  {
+    lock_release(&filesys_lock);
+    return -1;
+  }
+
   struct dir *result_parent = dir_get_parent (result);
+
+  
 
   // Possible case: the parent of directory RESULT has name T
   struct file *file = filesys_open (t, result);
@@ -569,6 +579,8 @@ chdir (char *dir)
   struct dir *new_cwd = resolve_path (dir, thread_cwd (), NULL, true);
   // printf(">> [chdir] Is new cwd a dir? %d\n", is_dir (new_cwd));
   // printf(">> [chdir] Original cwd sector: %d\n", thread_cwd ()->inode->sector);
+  if (dir_is_deleted (new_cwd))
+    return false;
 
   dir_close (thread_current ()->cwd);
   thread_current ()->cwd = new_cwd;

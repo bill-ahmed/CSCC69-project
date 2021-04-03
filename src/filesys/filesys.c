@@ -91,6 +91,10 @@ filesys_open (const char *name, struct dir *dir)
   if (dir != NULL)
     dir_lookup (dir, name, &inode);
   dir_close (dir);
+
+  // Special case: If trying to open root...
+  if(!strcmp (name, "/"))
+    return dir_open_root ();
   
   return is_dir (inode) ? dir_open (inode) : file_open (inode);
 }

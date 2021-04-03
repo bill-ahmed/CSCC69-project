@@ -261,6 +261,16 @@ dir_is_empty (struct dir *dir)
   return true;
 }
 
+/* True iff DIR is marked as deleted, false otherwise. */
+bool
+dir_is_deleted (struct dir *dir)
+{
+  if (dir == NULL)
+    return true;
+
+  return dir->inode->removed;
+}
+
 /* Standard C library, compare N characters of two strings. 
    TODO: Refactor this... */
 int
@@ -309,6 +319,16 @@ resolve_path (char *path, struct dir *start, char last_segment[NAME_MAX + 1], bo
   struct dir *prev_cwd = start;
 
   token = strtok_r (path_cpy, "/", &save_ptr);
+
+  // Special case: token is NULL implies opening root!
+  if(token == NULL)
+  {
+    if (last_segment)
+      strlcpy (last_segment, path, NAME_MAX + 1);
+    
+    return start;
+  }
+
   while (token != NULL)
   {
     // Token can be one of: '.', '..', or a directory name
@@ -360,9 +380,9 @@ resolve_path (char *path, struct dir *start, char last_segment[NAME_MAX + 1], bo
 
   // printf("[resolve] give_last: %d, cwd: %p\n", give_last, cwd);
   if (give_last)
-    return cwd;
+    return dir_is_deleted (cwd) ? NULL : cwd;
 
-  return prev_cwd;
+  return dir_is_deleted (prev_cwd) ? NULL : prev_cwd;
 }
 
 /* True iff INODE represents a directory, false otherwise*/
