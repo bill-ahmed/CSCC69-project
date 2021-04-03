@@ -536,19 +536,14 @@ write (int fd, const void *buffer, unsigned size)
     
     // Can NOT write to directories!
     if (is_dir (file_get_inode (file)))
-    {
-      // printf(">> [write] Tried writing to a file!\n");
       exit (-1);
-    }
-
-    // printf(">> [write] Writing to file %p\n", file);
 
     // Make sure we're the only one 
     // writing to this file.
     lock_acquire (&filesys_lock);
     new_size = file_write (file, buffer, size);
     lock_release (&filesys_lock);
-    // printf(">> [write] DONE writing to file %p. Wanted size: %d, actual: %d\n", file, size, new_size);
+
     return new_size;
   }
 }
@@ -577,15 +572,12 @@ bool
 chdir (char *dir)
 {
   struct dir *new_cwd = resolve_path (dir, thread_cwd (), NULL, true);
-  // printf(">> [chdir] Is new cwd a dir? %d\n", is_dir (new_cwd));
-  // printf(">> [chdir] Original cwd sector: %d\n", thread_cwd ()->inode->sector);
+
   if (dir_is_deleted (new_cwd))
     return false;
 
   dir_close (thread_current ()->cwd);
   thread_current ()->cwd = new_cwd;
-
-  // printf(">> [chdir] New cwd sector: %d\n", thread_cwd ()->inode->sector);
 
   return new_cwd != NULL;
 }

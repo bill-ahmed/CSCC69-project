@@ -236,7 +236,6 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 struct dir *
 dir_get_parent (struct dir *dir)
 {
-  // printf("Opening parent at sector %d\n", dir->inode->data.type == INODE_TYPE_DIR);
   // Root is its own parent!
   block_sector_t parent = dir->inode->data.parent;
   if(parent == NULL)
@@ -378,7 +377,6 @@ resolve_path (char *path, struct dir *start, char last_segment[NAME_MAX + 1], bo
   if(last_segment)
     strlcpy (last_segment, last, NAME_MAX + 1);
 
-  // printf("[resolve] give_last: %d, cwd: %p\n", give_last, cwd);
   if (give_last)
     return dir_is_deleted (cwd) ? NULL : cwd;
 
