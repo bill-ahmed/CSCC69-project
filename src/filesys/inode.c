@@ -325,10 +325,3 @@ inode_length (const struct inode *inode)
 {
   return inode->data.length;
 }
-
-/* Returns true iff INODE is a directory, false otherwise. */
-bool
-inode_is_dir (struct inode *inode)
-{
-  return inode->data.type == INODE_TYPE_DIR;
-}

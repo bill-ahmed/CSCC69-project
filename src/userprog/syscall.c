@@ -590,12 +590,8 @@ mkdir (char *dir)
     goto done;
   else
   {
-    // Create copy of directory name
-    dir_cpy = malloc (sizeof(char) * strlen(dir));
-    strlcpy (dir_cpy, dir, strlen(dir) + 1);
-
     char t[NAME_MAX + 1];
-    struct dir *result = resolve_path (dir_cpy, thread_cwd (), t, false);
+    struct dir *result = resolve_path (dir, thread_cwd (), t, false);
 
     if(result)
     {
@@ -603,9 +599,6 @@ mkdir (char *dir)
       // we should be able to change the '16' to a zero '0'
       successful = filesys_create_at_dir (t, 16, result, true);
     }
-
-    free (dir_cpy);
-
     goto done;
   }
 
