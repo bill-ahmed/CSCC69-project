@@ -156,6 +156,7 @@ inode_get_inumber (const struct inode *inode)
 /* Closes INODE and writes it to disk.
    If this was the last reference to INODE, frees its memory.
    If INODE was also a removed inode, frees its blocks. */
+/* TODO */
 void
 inode_close (struct inode *inode) 
 {
@@ -193,6 +194,7 @@ inode_remove (struct inode *inode)
 /* Reads SIZE bytes from INODE into BUFFER, starting at position OFFSET.
    Returns the number of bytes actually read, which may be less
    than SIZE if an error occurs or end of file is reached. */
+/* TODO */
 off_t
 inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset) 
 {
@@ -248,6 +250,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
 /* Writes SIZE bytes from BUFFER into INODE, starting at OFFSET.
    Returns the number of bytes actually written, which may be
    less than SIZE if end of file is reached or an error occurs. */
+/* TODO */
 off_t
 inode_write_at (struct inode *inode, const void *buffer_, off_t size,
                 off_t offset) 
@@ -437,6 +440,7 @@ bytes_to_sectors(off_t size)
 
 /* Allocates a sector in the file system and adds it to the
    file's lookup blocks as necessary. Does not move file EOF */
+/* TODO */
 bool 
 extend_one_sector(struct inode *inode)
 {
