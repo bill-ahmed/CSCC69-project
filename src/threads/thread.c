@@ -13,6 +13,7 @@
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include "vm/swap.h"
+#include "filesys/directory.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/syscall.h"
@@ -498,6 +499,8 @@ init_thread (struct thread *t, const char *name, int priority)
 
   list_init(&t->sup_page_table);
 
+  t->cwd = NULL;
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
@@ -665,6 +668,13 @@ thread_get_file_by_fd (int fd)
 
   // There is an internal offset of 2 because FDs 0 and 1 are reserved for I/O
   return thread_current ()->open_descriptors[fd - 2];
+}
+
+struct dir *
+thread_cwd()
+{
+  struct thread *curr = thread_current ();
+  return curr->cwd ? dir_reopen (curr->cwd) : dir_open_root ();
 }
 
 void 

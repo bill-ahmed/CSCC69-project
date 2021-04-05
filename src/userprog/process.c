@@ -55,6 +55,7 @@ process_execute (const char *file_name)
   {
     child = find_thread_by_tid (tid);
     child->parent = curr;
+    child->cwd = curr->cwd ? dir_reopen (curr->cwd) : NULL;
     list_push_back (&curr->child_threads, &child->child_elem);
   }
     
@@ -87,7 +88,7 @@ start_process (void *file_name_)
   }
   else
   {    
-    curr->executable_file = filesys_open (file_name);
+    curr->executable_file = filesys_open (file_name, NULL);
     file_deny_write (curr->executable_file);
     
     curr->parent->child_exec_loaded = 1;
@@ -161,6 +162,7 @@ process_wait (tid_t child_tid)
       return child->exit_status;
     }
 
+    child->cwd = curr->cwd;
     child->parent = curr;
     curr->waiting_on_child = child;
 
@@ -328,7 +330,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (file_name, NULL);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);

@@ -11,6 +11,8 @@
 #include "process.h"
 #include "pagedir.h"
 #include "vm/page.h"
+#include "filesys/inode.h"
+#include "filesys/directory.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -33,6 +35,12 @@ int write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);
 
+bool chdir (char *dir);
+bool mkdir (char *dir);
+bool readdir (int fd, char *name);
+
+bool isDir (int fd);
+int iNumber (int fd);
 
 // Helper prototypes
 void* get_stack_arg (void *esp, int offset);
@@ -241,6 +249,57 @@ syscall_handler (struct intr_frame *f)
       break;
     }
 
+    case SYS_CHDIR:
+    {
+      int *dir_addr = f->esp + 4;
+      validate_user_address (dir_addr);
+      validate_user_address ((void*) *dir_addr);
+
+      f->eax = chdir (*dir_addr);
+      break;
+    }
+
+    case SYS_MKDIR:
+    {
+      int *dir_addr = f->esp + 4;
+      validate_user_address (dir_addr);
+      validate_user_address ((void*) *dir_addr);
+
+      f->eax = mkdir (*dir_addr);
+      break;
+    }
+
+    case SYS_READDIR:
+    {
+      int *fd_addr = f->esp + 4;
+      int *buff_addr = f->esp + 8;
+
+      validate_user_address (fd_addr);
+      validate_user_address (buff_addr);
+      validate_user_address ((void*) *buff_addr);
+
+      f->eax = readdir (*fd_addr, *buff_addr);
+      break;
+    }
+
+    case SYS_ISDIR:
+    {
+      int *fd_addr = f->esp + 4;
+      validate_user_address (fd_addr);
+
+      f->eax = isDir (*fd_addr);
+      break;
+    }
+
+    case SYS_INUMBER:
+    {
+      int *fd_addr = f->esp + 4;
+      validate_user_address (fd_addr);
+
+      f->eax = iNumber (*fd_addr);
+      break;
+    }
+
     // Unhandled case
     default:
       break;
@@ -341,13 +400,33 @@ wait (int pid)
 bool 
 create (const char *file, unsigned initial_size)
 {
-  return filesys_create (file, initial_size);
+  if(!strcmp (file, ""))
+    exit (-1);
+
+  // Store last segment, i.e. name of file to create
+  char t[NAME_MAX + 1];
+  struct inode *i;
+
+  struct dir *result = resolve_path (file, thread_cwd (), t, false);
+
+  if(result == NULL)
+    return false;
+
+  if(result != NULL && dir_lookup (result, t, &i))
+    return false;
+  
+  bool status = filesys_create_at_dir (t, initial_size, result, false);
+  return status;
 }
 
 bool 
 remove (const char *file)
 {
-  return filesys_remove (file);
+  char t[NAME_MAX + 1];
+  struct dir *result = resolve_path (file, thread_cwd (), t, false);
+  bool success = filesys_remove_at_dir (t, result);
+
+  return success;
 }
 
 int
@@ -358,13 +437,33 @@ open (const char *file_name)
     return -1;
 
   lock_acquire(&filesys_lock);
-  struct file *file = filesys_open(file_name);
+
+  // Keep track of last segment, i.e. name of file/directory to open
+  char t[NAME_MAX + 1];
+
+  struct dir *result = resolve_path (file_name, thread_cwd (), t, false);
+  
+  if(result == NULL)
+  {
+    lock_release(&filesys_lock);
+    return -1;
+  }
+
+  struct dir *result_parent = dir_get_parent (result);
+
+  
+
+  // Possible case: the parent of directory RESULT has name T
+  struct file *file = filesys_open (t, result);
+  struct file *file_2 = filesys_open (t, result_parent);
+  struct inode *i;
+
   lock_release(&filesys_lock);
 
-  if (file == NULL)
+  if (file == NULL && file_2 == NULL)
     return -1;
 
-  return thread_get_next_descriptor (file);
+  return thread_get_next_descriptor (file ? file : file_2);
 }
 
 void 
@@ -375,7 +474,7 @@ close (int fd)
   exit_if_null (file);
 
   thread_remove_descriptor (fd);
-  file_close (file);
+  is_dir (file_get_inode (file)) ? dir_close (file) : file_close (file);
   return 0;
 }
 
@@ -432,12 +531,17 @@ write (int fd, const void *buffer, unsigned size)
 
     struct file* file = thread_get_file_by_fd (fd);
     exit_if_null (file);
+    
+    // Can NOT write to directories!
+    if (is_dir (file_get_inode (file)))
+      exit (-1);
 
     // Make sure we're the only one 
     // writing to this file.
     lock_acquire (&filesys_lock);
     new_size = file_write (file, buffer, size);
     lock_release (&filesys_lock);
+
     return new_size;
   }
 }
@@ -460,4 +564,74 @@ tell (int fd)
   exit_if_null (file);
 
   return file_tell (file);
+}
+
+bool
+chdir (char *dir)
+{
+  struct dir *new_cwd = resolve_path (dir, thread_cwd (), NULL, true);
+
+  if (dir_is_deleted (new_cwd))
+    return false;
+
+  dir_close (thread_current ()->cwd);
+  thread_current ()->cwd = new_cwd;
+
+  return new_cwd != NULL;
+}
+
+bool
+mkdir (char *dir)
+{
+  bool successful = false;
+  char *dir_cpy;
+
+  if(strlen(dir) == 0)
+    goto done;
+  else
+  {
+    char t[NAME_MAX + 1];
+    struct dir *result = resolve_path (dir, thread_cwd (), t, false);
+
+    if(result)
+    {
+      // Directories fixed size for now, once file growth is done
+      // we should be able to change the '16' to a zero '0'
+      successful = filesys_create_at_dir (t, 16, result, true);
+    }
+    goto done;
+  }
+
+  done:
+    return successful;
+}
+
+bool
+readdir (int fd, char *name)
+{
+  struct file* file = thread_get_file_by_fd (fd);
+  exit_if_null (file);
+
+  if(!is_dir (file))
+    return false;
+
+  return dir_readdir (file, name);
+}
+
+bool
+isDir (int fd)
+{
+  struct file* file = thread_get_file_by_fd (fd);
+  exit_if_null (file);
+
+  return is_dir (file_get_inode (file));
+}
+
+int
+iNumber (int fd)
+{
+  struct file* file = thread_get_file_by_fd (fd);
+  exit_if_null (file);
+
+  return inode_get_inumber (file_get_inode (file));
 }
