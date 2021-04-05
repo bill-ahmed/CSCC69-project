@@ -38,6 +38,10 @@ struct inode
    returns the same `struct inode'. */
 static struct list open_inodes;
 
+/* PROTOTYPES */
+static block_sector_t byte_to_sector(const struct inode *inode, off_t pos);
+static inline size_t bytes_to_sectors(off_t size);
+
 /* INODE FUNCTIONS */
 
 /* Initializes the inode module. */
@@ -53,7 +57,7 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (block_sector_t sector, off_t length, bool isDir, block_sector_t parent_sector)
 {
   struct inode_disk *disk_inode = NULL;
   bool success = false;
@@ -70,7 +74,9 @@ inode_create (block_sector_t sector, off_t length)
       size_t sectors = bytes_to_sectors (length);
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
-
+      disk_inode->type = isDir ? INODE_TYPE_DIR : INODE_TYPE_FILE;
+      disk_inode->parent = parent_sector;
+      
       /* For each sector we need to write to, free_map_allocate it
         then mark is as being written to in the sectors_in_use list.
         After done writing, remove it from the in use list. */

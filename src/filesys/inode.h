@@ -5,6 +5,7 @@
 #include <list.h>
 #include "filesys/off_t.h"
 #include "devices/block.h"
+#include <list.h>
 
 struct bitmap;
 
@@ -19,8 +20,41 @@ struct sector_lock
     struct list_elem elem;
 };
 
+/* What the inode represents */
+enum inode_type {
+  INODE_TYPE_FILE,
+  INODE_TYPE_DIR,
+};
+
+/* In-memory inode. */
+struct inode 
+{
+  struct list_elem elem;              /* Element in inode list. */
+  block_sector_t sector;              /* Sector number of disk location. */
+  int open_cnt;                       /* Number of openers. */
+  bool removed;                       /* True if deleted, false otherwise. */
+  int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
+  struct inode_disk data;             /* Inode content. */
+};
+
+/* On-disk inode.
+   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
+struct inode_disk
+{
+    /* The inode stored on disk is now sector indexes to
+      a direct or indirect data block */
+    block_sector_t data_blocks[12]; /*  */
+    unsigned magic;                 /* Magic number. */
+    off_t eof;                      /* Byte where the EOF is located. Filesize in bytes */
+    block_sector_t parent;          /* Sector number of parent, if type == INODE_TYPE_DIR, NULL otherwise. */
+    enum inode_type type;           /* The type of inode */
+    uint32_t unused[112];           /* Not used. */
+
+    /* 4*12 + 4*1 + 4*1 + 4*1 + 4*1 + 4*112 = 512 */
+};
+
 void inode_init (void);
-bool inode_create (block_sector_t, off_t);
+bool inode_create (block_sector_t, off_t, bool, block_sector_t);
 struct inode *inode_open (block_sector_t);
 struct inode *inode_reopen (struct inode *);
 block_sector_t inode_get_inumber (const struct inode *);

@@ -6,13 +6,6 @@
 #include "filesys/inode.h"
 #include "threads/malloc.h"
 
-/* A directory. */
-struct dir 
-  {
-    struct inode *inode;                /* Backing store. */
-    off_t pos;                          /* Current position. */
-  };
-
 /* A single directory entry. */
 struct dir_entry 
   {
@@ -24,9 +17,9 @@ struct dir_entry
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool
-dir_create (block_sector_t sector, size_t entry_cnt)
+dir_create (block_sector_t sector, size_t entry_cnt, block_sector_t parent_sector)
 {
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+  return inode_create (sector, entry_cnt * sizeof (struct dir_entry), true, parent_sector);
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -172,8 +165,8 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   e.in_use = true;
   strlcpy (e.name, name, sizeof e.name);
   e.inode_sector = inode_sector;
-  success = inode_write_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
-
+  off_t t = inode_write_at (dir->inode, &e, sizeof e, ofs);
+  success = t == sizeof e;
  done:
   return success;
 }
@@ -200,6 +193,10 @@ dir_remove (struct dir *dir, const char *name)
   inode = inode_open (e.inode_sector);
   if (inode == NULL)
     goto done;
+
+  // Make sure directory is empty!!
+  if (!dir_is_empty (dir_open (inode)))
+    return false;
 
   /* Erase directory entry. */
   e.in_use = false;
@@ -233,4 +230,197 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
         } 
     }
   return false;
+}
+
+/* Get parent of DIR. */
+struct dir *
+dir_get_parent (struct dir *dir)
+{
+  // Root is its own parent!
+  block_sector_t parent = dir->inode->data.parent;
+  if(parent == NULL)
+    parent = ROOT_DIR_SECTOR;
+
+  return dir_open (inode_open (parent));
+}
+
+/* Returns true iff DIR has no contents (no files and 
+   no sub-directories). Returns false otherwise. */
+bool
+dir_is_empty (struct dir *dir)
+{
+  struct dir_entry e;
+  size_t ofs;
+
+  for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+       ofs += sizeof e)
+    if (e.in_use)
+      return false;
+  
+  return true;
+}
+
+/* True iff DIR is marked as deleted, false otherwise. */
+bool
+dir_is_deleted (struct dir *dir)
+{
+  if (dir == NULL)
+    return true;
+
+  return dir->inode->removed;
+}
+
+/* Standard C library, compare N characters of two strings. 
+   TODO: Refactor this... */
+int
+strncmp(const char *s1, const char *s2, register size_t n)
+{
+  register unsigned char u1, u2;
+  while (n-- > 0)
+    {
+      u1 = (unsigned char) *s1++;
+      u2 = (unsigned char) *s2++;
+      if (u1 != u2)
+        return u1 - u2;
+      if (u1 == '\0')
+        return 0;
+    }
+  return 0;
+}
+
+/* Resolve PATH beginning at directory START.
+   Returns last accessible directory.
+   Stores last segment accessed in LAST_SEGMENT, if provided. 
+   
+   If GIVE_LAST is true, will return the last directory encountered, else the second-last one. 
+   This is useful for mkdir and chdir especially. */
+struct dir *
+resolve_path (char *path, struct dir *start, char last_segment[NAME_MAX + 1], bool give_last)
+{
+  char *path_cpy;
+  char *token, *save_ptr;
+
+  char last[NAME_MAX + 1];
+  
+  // Make a copy of path so we don't modify it in strtok_r
+  path_cpy = malloc(sizeof(char) * strlen(path) + 1);
+  strlcpy (path_cpy, path, strlen(path) + 1);
+
+  // Reject empty path
+  if(!strcmp (path, ""))
+    return NULL;
+
+  // Special case when path starts with root "/"
+  if(!strncmp (path, "/", 1))
+    start = dir_open_root ();
+
+  struct dir *cwd = start;
+  struct dir *prev_cwd = start;
+
+  token = strtok_r (path_cpy, "/", &save_ptr);
+
+  // Special case: token is NULL implies opening root!
+  if(token == NULL)
+  {
+    if (last_segment)
+      strlcpy (last_segment, path, NAME_MAX + 1);
+    
+    return start;
+  }
+
+  while (token != NULL)
+  {
+    // Token can be one of: '.', '..', or a directory name
+    if(strlen(token) > NAME_MAX)
+      return NULL;
+    
+    // Current directory
+    if (!strcmp (token, "."))
+    {
+      // Continue with while loop
+    }
+    else if(!strcmp (token, ".."))
+    {
+      // Previous directory
+      prev_cwd = cwd;
+      cwd = dir_get_parent (cwd);
+    }
+    else
+    {
+      /* This token is a possible directory/file name. */
+      strlcpy (last, token, strlen(token) + 1);
+
+      if (cwd != NULL)
+      {
+        struct inode *inode = NULL;
+        if(dir_lookup (cwd, token, &inode))
+        {
+          prev_cwd = cwd;
+          if (is_dir (inode))
+            cwd = dir_open (inode);
+        }
+        else
+        {
+          // We've hit the end, stop updating cwd and prev_cwd
+          // We still continue parsing so we can make note of 
+          // the last segment that appears. This would indicate 
+          // the file name, directory to create, etc.
+          prev_cwd = cwd;
+          cwd = NULL;
+        }
+      }
+    }
+
+    token = strtok_r (NULL, "/", &save_ptr);
+  }
+
+  if(last_segment)
+    strlcpy (last_segment, last, NAME_MAX + 1);
+
+  if (give_last)
+    return dir_is_deleted (cwd) ? NULL : cwd;
+
+  return dir_is_deleted (prev_cwd) ? NULL : prev_cwd;
+}
+
+/* True iff INODE represents a directory, false otherwise*/
+bool
+is_dir (struct inode *inode)
+{
+  if(inode == NULL)
+    return false;
+
+  return inode->data.type == INODE_TYPE_DIR;
+}
+
+/* Recursively print all directories/files in filesystem */
+void
+print_fs(struct dir *dir, int indent)
+{
+  printf("\n** Printing filesystem %d **\n\n", dir->inode->sector);
+  print_fs_helper (dir, indent);
+  printf("\n** Done printing filesystem **\n\n");
+}
+
+void
+print_fs_helper (struct dir *dir, int indent)
+{
+  char name[NAME_MAX + 1];
+  struct inode *i;
+  bool success;
+
+  while (dir_readdir (dir, name))
+  {
+    int temp = indent;
+
+    dir_lookup (dir, name, &i);
+
+    while (temp-- > 0)
+      printf("-");
+      
+    printf("| %s%s (%d)\n", name, !is_dir (i) ? ".txt" : "", i->sector);
+
+    if (is_dir (i))
+      print_fs_helper (dir_open (i), indent + 1);
+  }
 }
