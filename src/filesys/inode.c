@@ -114,7 +114,8 @@ bytes_to_sectors(off_t size)
 
 /* Finds the index of first occurrance of a zero in buffer.
    -1 otherwise. */
-int find_first_zero(block_sector_t *buffer, unsigned int length)
+int 
+find_first_zero(block_sector_t *buffer, unsigned int length)
 {
   block_sector_t *ptr = buffer;
   for (int index = 0; index < length; index++, ptr++)
@@ -140,7 +141,7 @@ extend_one_sector(struct inode_disk *inode_disk)
     - 10 is an indirect block
     - 11 is a double indirect block
   */
-  block_sector_t zero_buffer[128];
+  uint8_t zero_buffer[BLOCK_SECTOR_SIZE];
   memset(zero_buffer, 0, BLOCK_SECTOR_SIZE);
   block_sector_t sector_number = -1;
 
@@ -181,7 +182,7 @@ extend_one_sector(struct inode_disk *inode_disk)
     /* Grab the indirect block and check for first zero */
     block_sector_t data_buffer[128];
     block_read(fs_device, inode_disk->data_blocks[10], data_buffer);
-    seq_idx = find_first_zero(inode_disk->data_blocks, 10);
+    seq_idx = find_first_zero(data_buffer, 128);
 
     /* If we found an non allocated direct block, create it */
     if (seq_idx != -1)
@@ -216,6 +217,7 @@ void
 inode_init (void) 
 {
   list_init (&open_inodes);
+  list_init (&sectors_in_use);
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -249,7 +251,7 @@ inode_create (block_sector_t sector, off_t length, bool isDir, block_sector_t pa
     block_sector_t inode_sector;
     if (free_map_allocate(1, &inode_sector)) 
     {
-      printf(">> Created Inode at sector: %d\n", inode_sector);
+      // printf(">> Created Inode at sector: %d\n", sector);
 
       /* For each sector we need to write to, free_map_allocate it
       then mark is as being written to in the sectors_in_use list.
@@ -259,11 +261,15 @@ inode_create (block_sector_t sector, off_t length, bool isDir, block_sector_t pa
         /* Synchronization here? */
 
         if (extend_one_sector(disk_inode) == -1)
+        {
           printf(">> Could not increase file size\n");
+          return false;
+        }
       }
 
       /* Write the new disk inode to it's sector */
-      block_write(fs_device, inode_sector, disk_inode);
+      block_write(fs_device, sector, disk_inode);
+      success = true;
     }
 
     free (disk_inode);
@@ -374,8 +380,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
 {
   uint8_t *buffer = buffer_;
   off_t bytes_read = 0;
-  uint8_t *bounce = NULL;
-
+  
   /* While there are still bytes left to read */
   while (size > 0)
   {
@@ -474,12 +479,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   /* While there are still bytes left to write */
   while (size > 0)
   {
-    /* Can't read any data outside the bounds of the file */
-    if (offset >= inode->data.eof)
-    {
-      break;
-    }
-
     /* Calculate where to start, and how many bytes to read in this sector */
     off_t sector_ofs = offset % BLOCK_SECTOR_SIZE;
     off_t sector_bytes_to_write = BLOCK_SECTOR_SIZE - sector_ofs;
@@ -496,6 +495,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     {
       /* File does not contain a sector with that byte offset. Extend the file */
       sector = extend_one_sector(&inode->data);
+      // printf(">> Tried to extend file: %d\n", sector);
       if (sector == -1)
       {
         /* Space could not be allocated to extend */
@@ -504,6 +504,8 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     }
 
     /* Read the sector data in local variable */
+    block_read(fs_device, sector, data);
+
     /* TODO: Write to cache */
     memcpy(data + sector_ofs, buffer + bytes_written, sector_bytes_to_write);
     block_write(fs_device, sector, data);
@@ -512,7 +514,11 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     size -= sector_bytes_to_write;
     offset += sector_bytes_to_write;
     bytes_written += sector_bytes_to_write;
-    inode->data.eof += bytes_written;
+    if (offset > inode->data.eof)
+    {
+      /* Extend the EOF to however many bytes we wrote past it */
+      inode->data.eof += (offset - inode->data.eof);
+    }
   }
 
   return bytes_written;

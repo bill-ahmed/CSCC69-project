@@ -10,7 +10,7 @@
 struct bitmap;
 
 /* List of sectors in the fs being written to atm */
-struct list sectors_in_use = LIST_INITIALIZER(sectors_in_use);
+struct list sectors_in_use;
 
 /* Used to keep track of which sectors are being written
 to in the file system block */
@@ -24,17 +24,6 @@ struct sector_lock
 enum inode_type {
   INODE_TYPE_FILE,
   INODE_TYPE_DIR,
-};
-
-/* In-memory inode. */
-struct inode 
-{
-  struct list_elem elem;              /* Element in inode list. */
-  block_sector_t sector;              /* Sector number of disk location. */
-  int open_cnt;                       /* Number of openers. */
-  bool removed;                       /* True if deleted, false otherwise. */
-  int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-  struct inode_disk data;             /* Inode content. */
 };
 
 /* On-disk inode.
@@ -51,6 +40,17 @@ struct inode_disk
     uint32_t unused[112];           /* Not used. */
 
     /* 4*12 + 4*1 + 4*1 + 4*1 + 4*1 + 4*112 = 512 */
+};
+
+/* In-memory inode. */
+struct inode 
+{
+  struct list_elem elem;              /* Element in inode list. */
+  block_sector_t sector;              /* Sector number of disk location. */
+  int open_cnt;                       /* Number of openers. */
+  bool removed;                       /* True if deleted, false otherwise. */
+  int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
+  struct inode_disk data;             /* Inode content. */
 };
 
 void inode_init (void);
