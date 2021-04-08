@@ -2,7 +2,6 @@
 
 Group Members
 - Tanner Bergeron, 1003924872
-- Tanaan Karunakaran, 1003476366
 - Bilal Ahmed, 1004254843
 
 
