@@ -152,6 +152,8 @@ file_seek (struct file *file, off_t new_pos)
 {
   ASSERT (file != NULL);
   ASSERT (new_pos >= 0);
+  /* Can't seek outside the bounds of the largest possible file */
+  //file->pos = new_pos > MAX_FILE_SIZE ? MAX_FILE_SIZE : new_pos;
   file->pos = new_pos;
 }
 

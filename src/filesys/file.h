@@ -1,6 +1,9 @@
 #ifndef FILESYS_FILE_H
 #define FILESYS_FILE_H
 
+/* A bit more than 8 MB */
+#define MAX_FILE_SIZE 8459264
+
 #include "filesys/off_t.h"
 
 struct inode;

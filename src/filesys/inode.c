@@ -114,7 +114,7 @@ bytes_to_sectors(off_t size)
 
 /* Finds the index of first occurrance of a zero in buffer.
    -1 otherwise. */
-int 
+block_sector_t 
 find_first_zero(block_sector_t *buffer, unsigned int length)
 {
   block_sector_t *ptr = buffer;
@@ -128,10 +128,30 @@ find_first_zero(block_sector_t *buffer, unsigned int length)
   return -1;
 }
 
+block_sector_t
+make_new_sector(block_sector_t *sector_table_ptr)
+{
+  
+  // block_sector_t sector_number = -1;
+  // uint8_t zero_buffer[BLOCK_SECTOR_SIZE];
+  // memset(zero_buffer, 0, BLOCK_SECTOR_SIZE);
+
+  // if (free_map_allocate(1, &sector_number))
+  // {
+  //   /* Update the lookup table and return the sector index */
+  //   *sector_table_ptr = sector_number;
+  //   block_write(fs_device, sector_number, zero_buffer);
+  //   return sector_number;
+  // }
+  // else
+  
+  return -1;
+}
+
 /* Allocates a sector in the file system, zeros, and adds it to the
-   file's lookup blocks as necessary. Does not move file EOF */
+file's lookup blocks as necessary. Does not move file EOF */
 /* TODO */
-block_sector_t 
+block_sector_t
 extend_one_sector(struct inode_disk *inode_disk)
 {
   ASSERT(inode_disk != NULL);
@@ -141,73 +161,228 @@ extend_one_sector(struct inode_disk *inode_disk)
     - 10 is an indirect block
     - 11 is a double indirect block
   */
+  int INDIRECT_INDEX = 10;
+  int DBL_INDIRECT_INDEX = 11;
+  block_sector_t level1_idx = NULL;
+  block_sector_t level2_idx = NULL;
+  block_sector_t sector_number = NULL;
+  
   uint8_t zero_buffer[BLOCK_SECTOR_SIZE];
   memset(zero_buffer, 0, BLOCK_SECTOR_SIZE);
-  block_sector_t sector_number = -1;
+  
+  /* ====== DIRECT BLOCK CHECKING ======= */
 
   /* Loop through each direct sector in table */
-  off_t seq_idx = find_first_zero(inode_disk->data_blocks, 10);
+  level1_idx = find_first_zero(inode_disk->data_blocks, 10);
 
   /* Direct sector allocation */
-  if (seq_idx != -1)
+  if (level1_idx != -1)
   {
     if (free_map_allocate(1, &sector_number))
     {
       /* Update the lookup table and return the sector index */
-      inode_disk->data_blocks[seq_idx] = sector_number;
+      inode_disk->data_blocks[level1_idx] = sector_number;
       block_write(fs_device, sector_number, zero_buffer);
       return sector_number;
     }
     else
-      PANIC(">> Ran out of filespace");
+      return -1;
   }
+
+  /* ====== INDIRECT BLOCK CHECKING ======= */
 
   /* Must be either direct or indirect */
   else
   {
     /* Special case where indirect block needs to be set up */
-    if (inode_disk->data_blocks[10] == 0)
+    if (inode_disk->data_blocks[INDIRECT_INDEX] == 0)
     {
-      /* Make the indirect block */
       if (free_map_allocate(1, &sector_number))
       {
-        /* Write the sector of the indirect block */
-        inode_disk->data_blocks[10] = sector_number;
+        /* Update the lookup table and return the sector index */
+        inode_disk->data_blocks[INDIRECT_INDEX] = sector_number;
         block_write(fs_device, sector_number, zero_buffer);
       }
       else
-        PANIC(">> Ran out of filespace");
+        return -1;
     }
 
     /* Grab the indirect block and check for first zero */
-    block_sector_t data_buffer[128];
-    block_read(fs_device, inode_disk->data_blocks[10], data_buffer);
-    seq_idx = find_first_zero(data_buffer, 128);
+    block_sector_t *single_indirect_buffer = malloc(128 * sizeof(block_sector_t));
+    if( single_indirect_buffer == NULL)
+      return -1;
+    
+    memset(single_indirect_buffer, 0, BLOCK_SECTOR_SIZE);
+    block_read(fs_device, inode_disk->data_blocks[INDIRECT_INDEX], single_indirect_buffer);
+    level1_idx = find_first_zero(single_indirect_buffer, 128);
 
     /* If we found an non allocated direct block, create it */
-    if (seq_idx != -1)
+    if (level1_idx != -1)
     {
-      /* Make the direct block */
       if (free_map_allocate(1, &sector_number))
       {
-        /* Zero the new block */
+        /* Update the lookup table and return the sector index */
+        single_indirect_buffer[level1_idx] = sector_number;
         block_write(fs_device, sector_number, zero_buffer);
-
-        /* Update the indirect block */
-        data_buffer[seq_idx] = sector_number;
-        block_write(fs_device, inode_disk->data_blocks[10], data_buffer);
-
-        /* Return number of direct block */
+        block_write(fs_device, inode_disk->data_blocks[INDIRECT_INDEX], single_indirect_buffer);
+        free(single_indirect_buffer);
         return sector_number;
       }
       else
-        PANIC(">> Ran out of filespace");
+      {
+        free(single_indirect_buffer);
+        return -1;
+      }
     }
 
-    /* Must be double indirect then */
-    PANIC(">> Tried to allocate a sector of a file > 69 KB. Not implemented yet\n");
+    /* ====== DOUBLE INDIRECT BLOCK CHECKING ======= */
+
+    /* File size > 69 KB, Must be double indirect then */
+    else {
+      //PANIC(">> BIG FILES NOT SUPPORTED YET");
+      block_sector_t *single_indirect_buffer = malloc(128 * sizeof(block_sector_t));
+      block_sector_t *double_indirect_buffer = malloc(128 * sizeof(block_sector_t));
+      if (single_indirect_buffer == NULL || double_indirect_buffer == NULL)
+        return -1;
+
+      memset(single_indirect_buffer, 0, BLOCK_SECTOR_SIZE);
+      memset(double_indirect_buffer, 0, BLOCK_SECTOR_SIZE);
+
+      /* Special case where double indirect block needs to be set up */
+      if (inode_disk->data_blocks[DBL_INDIRECT_INDEX] == 0)
+      {
+        if (free_map_allocate(1, &sector_number))
+        {
+          /* Update the lookup table and return the sector index */
+          inode_disk->data_blocks[DBL_INDIRECT_INDEX] = sector_number;
+          block_write(fs_device, sector_number, zero_buffer);
+        }
+        else
+          return -1;
+      }
+
+      /* Grab the double indirect block and check for first zero */
+      block_read(fs_device, inode_disk->data_blocks[DBL_INDIRECT_INDEX], double_indirect_buffer);
+
+      /* Special case where first is zero, then create the indirect block */
+      if (double_indirect_buffer[0] == 0)
+      {
+        if (free_map_allocate(1, &sector_number))
+        {
+          /* Update the lookup table and return the sector index */
+          double_indirect_buffer[0] = sector_number;
+          block_write(fs_device, sector_number, zero_buffer);
+          block_write(fs_device, inode_disk->data_blocks[DBL_INDIRECT_INDEX], double_indirect_buffer);
+        }
+        else
+          return -1;
+      }
+
+      /* Grab the indirect block of the one before the first zero */
+      level1_idx = find_first_zero(double_indirect_buffer, 128);
+
+      /* If it found an empty indirect block */
+      if (level1_idx != -1)
+      {
+        /* We are not just able to grab the next 0 indirect in general since there
+        might be some free sectors in an indirect block that has already been
+        allocated. So we need to check (first_zero - 1) first before trying 
+        to just allocate the next indirect sector and use that. Otherwise we
+        would only ever be using the first direct block of each indirect block. */
+
+        /* level1_idx > 0 since we have already created the 0th indirect block above 
+          if it did not exist */
+        
+        /* Check level1_idx - 1 */
+        block_read(fs_device, double_indirect_buffer[level1_idx - 1], single_indirect_buffer);
+        level2_idx = find_first_zero(single_indirect_buffer, 128);
+        if (level2_idx != -1)
+        {
+          /* Make a direct block */
+          if (free_map_allocate(1, &sector_number))
+          {
+            /* Update the lookup table and return the sector index */
+            single_indirect_buffer[level2_idx] = sector_number;
+            block_write(fs_device, sector_number, zero_buffer);
+            /* Write the updated buffer back to the indirect block */
+            block_write(fs_device, double_indirect_buffer[level1_idx - 1], single_indirect_buffer);
+            free(single_indirect_buffer);
+            free(double_indirect_buffer);
+            return sector_number;
+          }
+          else
+            return -1;
+        }
+        
+        /* If it didn't find one then the previous is full. Make a new indirect block */
+        if (free_map_allocate(1, &sector_number))
+        {
+          /* Update the lookup table and return the sector index */
+          double_indirect_buffer[level1_idx] = sector_number;
+          block_write(fs_device, sector_number, zero_buffer);
+          block_write(fs_device, inode_disk->data_blocks[DBL_INDIRECT_INDEX], double_indirect_buffer);
+        }
+        else
+          return -1;
+
+        /* We can memset the data buffer instead of reading in the zeros we
+          know to already be in that new block. SPEEEED */
+        memset(single_indirect_buffer, 0, BLOCK_SECTOR_SIZE);
+
+        /* Make a direct block at the 0th index */
+        if (free_map_allocate(1, &sector_number))
+        {
+          /* Zero the new block */
+          block_write(fs_device, sector_number, zero_buffer);
+          
+          /* Update the indirect block table */
+          (single_indirect_buffer[0]) = sector_number;
+          block_write(fs_device, double_indirect_buffer[level1_idx], single_indirect_buffer);
+
+          free(single_indirect_buffer);
+          free(double_indirect_buffer);
+          return sector_number;
+        }
+        else
+          return -1;
+      }
+
+      /* Otherwise each of the indirect indexes were already filled in so
+        check the last one to make sure the file is indeed full full */
+      else
+      {
+        block_read(fs_device, double_indirect_buffer[127], single_indirect_buffer);
+        level2_idx = find_first_zero(single_indirect_buffer, 128);
+        
+        /* If there is a zero index in the last indirect block */
+        if (level2_idx != -1)
+        {
+          /* Make a direct block */
+          if (free_map_allocate(1, &sector_number))
+          {
+            /* Zero the new block */
+            block_write(fs_device, sector_number, zero_buffer);
+
+            /* Update the indirect block table */
+            single_indirect_buffer[level2_idx] = sector_number;
+            block_write(fs_device, double_indirect_buffer[127], single_indirect_buffer);
+
+            free(single_indirect_buffer);
+            free(double_indirect_buffer);
+            return sector_number;
+          }
+          else
+            return -1;          
+        }
+
+        /* There is no zero index in the last indirect block. Completely full */
+        else
+        {
+          return -1;
+        }
+      }
+    }
   }
-  return -1;
 }
 
 /* INODE FUNCTIONS */
@@ -247,30 +422,25 @@ inode_create (block_sector_t sector, off_t length, bool isDir, block_sector_t pa
     disk_inode->eof = length;
     memset(disk_inode->data_blocks, 0, 12 * sizeof(block_sector_t));
 
-    /* Allocated space for the inode itself */
-    block_sector_t inode_sector;
-    if (free_map_allocate(1, &inode_sector)) 
+    /* For each sector we need to write to, free_map_allocate it
+    then mark is as being written to in the sectors_in_use list.
+    After done writing, remove it from the in use list. */
+    for (size_t sectors_left_to_write = sectors; sectors_left_to_write > 0; sectors_left_to_write--)
     {
-      // printf(">> Created Inode at sector: %d\n", sector);
-
-      /* For each sector we need to write to, free_map_allocate it
-      then mark is as being written to in the sectors_in_use list.
-      After done writing, remove it from the in use list. */
-      for (size_t sectors_left_to_write = sectors; sectors_left_to_write > 0; sectors_left_to_write--)
+      /* Synchronization here? */
+      block_sector_t new_sec = extend_one_sector(disk_inode);
+      if (new_sec == -1)
       {
-        /* Synchronization here? */
-
-        if (extend_one_sector(disk_inode) == -1)
-        {
-          printf(">> Could not increase file size\n");
-          return false;
-        }
+        printf(">> Could not increase file size\n");
+        return false;
       }
-
-      /* Write the new disk inode to it's sector */
-      block_write(fs_device, sector, disk_inode);
-      success = true;
+      // printf(">> Extended a file by adding sector %d\n", new_sec);
     }
+
+    /* Write the new disk inode to it's sector */
+    block_write(fs_device, sector, disk_inode);
+    success = true;
+    // printf(">> Created Inode at sector: %d\n", sector);
 
     free (disk_inode);
   }
