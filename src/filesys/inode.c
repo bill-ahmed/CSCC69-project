@@ -35,7 +35,8 @@ indirect_sector_lookup(block_sector_t sector, uint32_t offset)
   free(data);
 
   /* We can use 0 to determine whether it is a valid sector 
-  since only ever the root dir is at 0. */
+  since 0 is reserved and it tells us this part hasn't been
+  allocated yet. */
   return (found_index == 0) ? -1 : found_index;
 }
 
@@ -62,6 +63,8 @@ byte_to_sector(const struct inode *inode, off_t pos)
     return -1;
   }
 
+  block_sector_t sector = -1;
+
   /* If the offset position pos is < EOF then we assume the
      sectors are set up and indexed correctly */
 
@@ -70,7 +73,8 @@ byte_to_sector(const struct inode *inode, off_t pos)
   /* Direct block index [0, 9] */
   if (file_sector_index < 10)
   {
-    return inode->data.data_blocks[file_sector_index];
+    sector = inode->data.data_blocks[file_sector_index];
+    return sector > 0 ? sector : -1;  
   }
 
   /* Must be either direct or indirect */
@@ -81,7 +85,8 @@ byte_to_sector(const struct inode *inode, off_t pos)
     /* 1 level indirect [10] */
     if (file_sector_index < 128)
     {
-      return indirect_sector_lookup(inode->data.data_blocks[10], file_sector_index);
+      sector = indirect_sector_lookup(inode->data.data_blocks[10], file_sector_index);
+      return sector > 0 ? sector : -1;
     }
 
     /* 2 level indirect [11] */
@@ -99,7 +104,8 @@ byte_to_sector(const struct inode *inode, off_t pos)
       }
 
       /* Using the indirect sector index, we get one of the 128 data blocks */
-      return indirect_sector_lookup(indirect_idx, file_sector_index % 128);
+      sector = indirect_sector_lookup(indirect_idx, file_sector_index % 128);
+      return sector > 0 ? sector : -1;
     }
   }
 }
@@ -128,29 +134,8 @@ find_first_zero(block_sector_t *buffer, unsigned int length)
   return -1;
 }
 
-block_sector_t
-make_new_sector(block_sector_t *sector_table_ptr)
-{
-  
-  // block_sector_t sector_number = -1;
-  // uint8_t zero_buffer[BLOCK_SECTOR_SIZE];
-  // memset(zero_buffer, 0, BLOCK_SECTOR_SIZE);
-
-  // if (free_map_allocate(1, &sector_number))
-  // {
-  //   /* Update the lookup table and return the sector index */
-  //   *sector_table_ptr = sector_number;
-  //   block_write(fs_device, sector_number, zero_buffer);
-  //   return sector_number;
-  // }
-  // else
-  
-  return -1;
-}
-
 /* Allocates a sector in the file system, zeros, and adds it to the
 file's lookup blocks as necessary. Does not move file EOF */
-/* TODO */
 block_sector_t
 extend_one_sector(struct inode_disk *inode_disk)
 {
@@ -415,7 +400,7 @@ inode_create (block_sector_t sector, off_t length, bool isDir, block_sector_t pa
   disk_inode = malloc(sizeof *disk_inode);
   if (disk_inode != NULL)
   {
-    size_t sectors = bytes_to_sectors (length);
+    size_t sectors = bytes_to_sectors (length) + 1;
     disk_inode->magic = INODE_MAGIC;
     disk_inode->type = isDir ? INODE_TYPE_DIR : INODE_TYPE_FILE;
     disk_inode->parent = parent_sector;
@@ -613,36 +598,19 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
      in between and fill in with 0 bytes */
   if (offset > inode->data.eof)
   {
-    /* Determine whether the offset is within the same sector as EOF */
-    off_t sector_ofs = offset % BLOCK_SECTOR_SIZE;
-    off_t eof_ofs = inode->data.eof % BLOCK_SECTOR_SIZE;
     off_t byte_difference = offset - inode->data.eof;
-
-    if (sector_ofs + (byte_difference) > BLOCK_SECTOR_SIZE)
+    size_t sectors_to_create = bytes_to_sectors(byte_difference);
+    while (sectors_to_create > 0)
     {
-      /* Write in the bytes between EOF and boundary to be zeros */
-      uint8_t data[BLOCK_SECTOR_SIZE];
-      block_sector_t EOF_sector = byte_to_sector(inode, inode->data.eof);
-      block_read(fs_device, EOF_sector, data);
-      memset(data + eof_ofs, 0, BLOCK_SECTOR_SIZE - eof_ofs);
-      block_write(fs_device, EOF_sector, data);
-
-      /* The offset to start writing to lies beyond the sector boundary
-      where the EOF is located */
-      size_t sectors_to_create = bytes_to_sectors(byte_difference);
-      while (sectors_to_create > 0)
+      if (extend_one_sector(&inode->data) == -1)
       {
-        if (extend_one_sector(&inode->data) == -1)
-        {
-          printf(">> Could not allocate enough space to grow file to write at byte %d\n", offset);
-          return 0;
-        }
-        sectors_to_create--;
+        printf(">> Could not allocate enough space to grow file to write at byte %d\n", offset);
+        return bytes_written;
       }
-
-      /* Extend the EOF temporarily to where the write intends to begin */
-      inode->data.eof = offset;
+      sectors_to_create--;
     }
+
+    inode->data.eof = offset;
   }
 
   /* Now offset <= EOF */
@@ -661,17 +629,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     /* Grab the corresponding sector (TODO: Check cache) */
     uint8_t data[BLOCK_SECTOR_SIZE];
     block_sector_t sector = byte_to_sector(inode, offset);
-    if (sector == -1)
-    {
-      /* File does not contain a sector with that byte offset. Extend the file */
-      sector = extend_one_sector(&inode->data);
-      // printf(">> Tried to extend file: %d\n", sector);
-      if (sector == -1)
-      {
-        /* Space could not be allocated to extend */
-        return bytes_written;
-      }
-    }
 
     /* Read the sector data in local variable */
     block_read(fs_device, sector, data);
@@ -687,11 +644,25 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     if (offset > inode->data.eof)
     {
       /* Extend the EOF to however many bytes we wrote past it */
-      inode->data.eof += (offset - inode->data.eof);
+      inode->data.eof = offset;
+    }
+
+    /* We will need more space for the next write */
+    if (inode->data.eof == offset && 
+        inode->data.eof % BLOCK_SECTOR_SIZE == 0 && 
+        size > 0)
+    {
+      sector = extend_one_sector(&inode->data);
+      //printf(">> Tried to extend file: %d\n", sector);
+      if (sector == -1)
+      {
+        /* Space could not be allocated to extend */
+        return bytes_written;
+      }
     }
   }
 
-  return bytes_written;
+  return bytes_written; 
 }
 
 /* Disables writes to INODE.

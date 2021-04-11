@@ -127,7 +127,7 @@ filesys_remove_at_dir (const char *name, struct dir *dir)
 static void
 do_format (void)
 {
-  printf ("Formatting file system...\n");
+  printf ("Formatting file system...");
   free_map_create ();
   if (!dir_create (ROOT_DIR_SECTOR, 16, NULL))
     PANIC ("root directory creation failed");
