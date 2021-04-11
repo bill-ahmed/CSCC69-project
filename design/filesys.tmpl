@@ -69,10 +69,47 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+enum inode_type{
+   INODE_TYPE_FILE
+   INODE_TYPE_DIR
+};
+
+struct thread {
+   ...
+   struct dir *cwd;   /* Thread's working directory */
+};
+
+struct inode_disk {
+   ...
+   enum inode_type type;    /* The type of inode, e.g. directory */
+   block_sector_t parent;   /* Sector number of parent, if type == INODE_TYPE_DIR, NULL otherwise. */
+   uint32_t unused[123];    /* Not used, size 123 b/c of new enum and parent */
+};
+
+NOTE: Some other struct definitions were moved into their respective header files.
+
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
+
+The traversal takes in a file/directory path and a starting directory. 
+If the path begins with a “/”, we change the starting directory to be the 
+root. From here, we make use of “strtok_r” with the delimiter “/” and walk 
+through the path.
+
+If a given token is “.”, we do nothing. If it is “..”, we go up a 
+directory via a call to “dir_get_parent()”. Otherwise, it is a possible 
+file/directory name. If it is a directory, we go into it an continue, 
+otherwise we stop updating the “cwd” variable and continue.
+
+We continue till the end so we can make note of the last segment, 
+this is especially useful in the syscalls “mkdir” and “chdir”, where 
+it tells us the directory to create or go into.
+
+In order to handle relative paths, we make use of the starting 
+directory that is passed in to “resolve()” and do all the lookups on it as described above.
+
 
 ---- SYNCHRONIZATION ----
 
@@ -81,15 +118,50 @@ FirstName LastName <email@domain.example>
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
 
+Whenever we are creating/removing a file or directory, we make use of 
+filesystem locks that ensure only a single thread can modify a given 
+directory at a time. This ensures that if Thread A removes a file while 
+Thread B tries to access it, the “removed” flag of the inode will be 
+toggled to true and the read will fail. Further, making use of 
+“dir_open”/”dir_reopen” and their file counterparts helps us ensure 
+that we’re working on the latest version.
+
 >> B5: Does your implementation allow a directory to be removed if it
 >> is open by a process or if it is in use as a process's current
 >> working directory?  If so, what happens to that process's future
 >> file system operations?  If not, how do you prevent it?
 
+Yes, the directory can be removed if it is open by another process 
+(or if it is the current working directory). The restriction on this, 
+however, is that the directory *must* be empty before deleting it.
+
+To handle the case of subsequent reads/writes to a deleted directory, 
+we again make use of the “removed” flag in each inode at both the syscall 
+and “resolve()” levels and return the appropriate values to indicate 
+failure (e.g. -1, NULL, false, etc.) Therefore, all further filesystem 
+operations on the deleted directory will be safely rejected, where then 
+the process can use “chdir()” to navigate elsewhere. The helper methods 
+“dir_open”/”dir_reopen” and their file counterparts also help with this.
+
+
 ---- RATIONALE ----
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+
+We chose to have each process keep track of its current working directory 
+as part of the “thread” struct. This made it very easy to update (via a call 
+to “chdir()”, or in the case of “exec” syscall when the child inherits the 
+parent’s current working directory), and also made accessing it mostly trivial. 
+Instead of accessing it directly (e.g. thread_current()->cwd) a method 
+“thread_cwd()” was created. 
+
+This abstraction lets us run checks on the cwd, such as if it’s NULL then 
+we know to return the root directory. Further, all calls to “thread_cwd()” 
+will re-open the directory to ensure the system has the latest version, 
+and this helps with our solution to B5 by preventing navigation to a 
+non-existent directory or opening a non-existent file.
+
 
                  BUFFER CACHE
                  ============
