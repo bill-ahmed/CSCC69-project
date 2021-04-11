@@ -596,10 +596,12 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
   /* If the write offset is beyond the EOF, allocate missing sectors 
      in between and fill in with 0 bytes */
+  //printf(">> Offset: %d, EOF: %d\n", offset, inode->data.eof);
   if (offset > inode->data.eof)
   {
     off_t byte_difference = offset - inode->data.eof;
     size_t sectors_to_create = bytes_to_sectors(byte_difference);
+    //printf(">> Trying to make %d new sectors to fill in space \n", sectors_to_create);
     while (sectors_to_create > 0)
     {
       if (extend_one_sector(&inode->data) == -1)
@@ -627,7 +629,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     }
 
     /* Grab the corresponding sector (TODO: Check cache) */
-    uint8_t data[BLOCK_SECTOR_SIZE];
+    uint8_t *data = malloc(BLOCK_SECTOR_SIZE);
+    if (!data)
+      return bytes_written;
+
     block_sector_t sector = byte_to_sector(inode, offset);
 
     /* Read the sector data in local variable */
@@ -648,20 +653,20 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     }
 
     /* We will need more space for the next write */
-    if (inode->data.eof == offset && 
-        inode->data.eof % BLOCK_SECTOR_SIZE == 0 && 
-        size > 0)
+    if (inode->data.eof == offset && byte_to_sector(inode, offset) == -1)
     {
       sector = extend_one_sector(&inode->data);
       //printf(">> Tried to extend file: %d\n", sector);
       if (sector == -1)
       {
         /* Space could not be allocated to extend */
+        free(data);
         return bytes_written;
       }
     }
+    free(data);
   }
-
+  
   return bytes_written; 
 }
 
