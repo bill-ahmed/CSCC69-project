@@ -635,6 +635,9 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
     block_sector_t sector = byte_to_sector(inode, offset);
 
+    if(sector == -1)
+      sector = extend_one_sector (&inode->data);
+
     /* Read the sector data in local variable */
     block_read(fs_device, sector, data);
 
