@@ -451,19 +451,27 @@ open (const char *file_name)
 
   struct dir *result_parent = dir_get_parent (result);
 
-  
-
   // Possible case: the parent of directory RESULT has name T
-  struct file *file = filesys_open (t, result);
-  struct file *file_2 = filesys_open (t, result_parent);
-  struct inode *i;
+  struct file *file;
+  struct file *file_2;
+
+  // Need to re-open because it may have updated in the mean time
+  file  = filesys_open (t, dir_reopen (result));
+  if(file == NULL)
+    {
+      file = filesys_open (t, dir_reopen (result_parent));
+    }
+
+  // if(is_dir(file_get_inode(file)))
+  //   print_fs (file, 1);
 
   lock_release(&filesys_lock);
 
-  if (file == NULL && file_2 == NULL)
+  if (file == NULL)
     return -1;
 
-  return thread_get_next_descriptor (file ? file : file_2);
+  // printf(">> Opening: %s. Is dir? %d\n", file_name, is_dir(file_get_inode(file)));
+  return thread_get_next_descriptor (is_dir(file_get_inode (file)) ? dir_reopen(file) : file_reopen(file));
 }
 
 void 
@@ -539,6 +547,9 @@ write (int fd, const void *buffer, unsigned size)
     // Make sure we're the only one 
     // writing to this file.
     lock_acquire (&filesys_lock);
+    
+    // printf(">> Writing to fd %d with size %d to file %p at offset %d\n", fd, size, file, file_tell(file));
+
     new_size = file_write (file, buffer, size);
     lock_release (&filesys_lock);
 
@@ -612,7 +623,7 @@ readdir (int fd, char *name)
   struct file* file = thread_get_file_by_fd (fd);
   exit_if_null (file);
 
-  if(!is_dir (file))
+  if(!is_dir (file_get_inode(file)))
     return false;
 
   return dir_readdir (file, name);

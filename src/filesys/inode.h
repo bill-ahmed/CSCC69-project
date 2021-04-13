@@ -2,11 +2,23 @@
 #define FILESYS_INODE_H
 
 #include <stdbool.h>
+#include <list.h>
 #include "filesys/off_t.h"
 #include "devices/block.h"
 #include <list.h>
 
 struct bitmap;
+
+/* List of sectors in the fs being written to atm */
+struct list sectors_in_use;
+
+/* Used to keep track of which sectors are being written
+to in the file system block */
+struct sector_lock
+{
+    block_sector_t sector;
+    struct list_elem elem;
+};
 
 /* What the inode represents */
 enum inode_type {
@@ -18,12 +30,16 @@ enum inode_type {
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
 {
-  block_sector_t start;               /* First data sector. */
-  block_sector_t parent;              /* Sector number of parent, if type == INODE_TYPE_DIR, NULL otherwise. */
-  off_t length;                       /* File size in bytes. */
-  unsigned magic;                     /* Magic number. */
-  enum inode_type type;               /* The type of inode */
-  uint32_t unused[123];               /* Not used. */
+    /* The inode stored on disk is now sector indexes to
+      a direct or indirect data block */
+    block_sector_t data_blocks[12]; /*  */
+    unsigned magic;                 /* Magic number. */
+    off_t eof;                      /* Byte where the EOF is located. Filesize in bytes */
+    block_sector_t parent;          /* Sector number of parent, if type == INODE_TYPE_DIR, NULL otherwise. */
+    enum inode_type type;           /* The type of inode */
+    uint32_t unused[112];           /* Not used. */
+
+    /* 4*12 + 4*1 + 4*1 + 4*1 + 4*1 + 4*112 = 512 */
 };
 
 /* In-memory inode. */
