@@ -224,7 +224,6 @@ extend_one_sector(struct inode_disk *inode_disk)
 
     /* File size > 69 KB, Must be double indirect then */
     else {
-      //PANIC(">> BIG FILES NOT SUPPORTED YET");
       block_sector_t *single_indirect_buffer = malloc(128 * sizeof(block_sector_t));
       block_sector_t *double_indirect_buffer = malloc(128 * sizeof(block_sector_t));
       if (single_indirect_buffer == NULL || double_indirect_buffer == NULL)
@@ -659,7 +658,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     if (inode->data.eof == offset && byte_to_sector(inode, offset) == -1)
     {
       sector = extend_one_sector(&inode->data);
-      //printf(">> Tried to extend file: %d\n", sector);
       if (sector == -1)
       {
         /* Space could not be allocated to extend */

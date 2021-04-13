@@ -174,14 +174,59 @@ struct sector_lock
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+/* This is our buffer cache */
+struct list buffer_cache;
+
+/* This is the actual data associated to a buffer block */
+struct buffer_elem
+{
+    struct list_elem elem;
+    data_buffer[BLOCK_SECTOR_SIZE];
+    block_sector_t sector;
+    bool marked;
+};
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how your cache replacement algorithm chooses a cache
 >> block to evict.
 
+    We append buffer elems to the end of the list when we would like to add
+    a new buffer elem to our cache. 
+    
+    When chosing to evict, we go through the list starting from the front and
+    at each element, if it is not marked, we mark it for eviction and keep going,
+    but if we come across an elem already marked for eviction, we evict that one
+    (write to disk) and return. 
+    
+    Each read or write to a buffer unmarks an elem for eviction because it is
+    likely to be used again if it is used once.
+
+    This is our version of the second chance algorithm. 
+
 >> C3: Describe your implementation of write-behind.
 
+    The operating system spawns a thread at the beginning of startup that sleeps 
+    for 5 seconds and then runs the backup function which writes the contents of
+    the cache to the disk. This loops until the thread is terminated at shutdown.
+
+    As well on each eviction of the cache, that evicted sector is written to the
+    disk. This avoids doing a write each time and dirty copy available for fast
+    access.
+
 >> C4: Describe your implementation of read-ahead.
+
+    Whenever there is a call read a sector, if the next sector of that
+    file is not already in the cache, we spawn a thread to read in that next 
+    sector of the file and put it in the cache, so that the next read which
+    likely will want the next sector of the file will be able to grab it from
+    the cache instead.
+    
+    Since we deligate this read to a new thread, the thread that called the block_read
+    will not be slowed down by also reading the sector infront of it as well. The thread
+    then exits after. The function passed into this thread is able to be told the number
+    of sectors in the file to read ahead so this is able to be tuned to figure out a
+    good number for performance. By default and recommended in the handout, it is 1.
 
 ---- SYNCHRONIZATION ----
 
@@ -189,13 +234,35 @@ struct sector_lock
 >> buffer cache block, how are other processes prevented from evicting
 >> that block?
 
+    The same list of sector locks used for currently being accessed sectors
+    is also used here. If a thread wants to write to or evict that sector, it
+    must aquire the sector lock for that sector. This also stops new readers
+    but not readers currently reading the sector. Therefore if a thread attempts
+    to modify the contents of that block, it will have to wait until the thread
+    currently modifying it finishes. This avoids any cases where something is
+    being written to and trying to be evicted at the same time and visa versa.  
+
 >> C6: During the eviction of a block from the cache, how are other
 >> processes prevented from attempting to access the block?
+
+    Similar to (C5), attempting to evict requires grabbing the sector lock
+    and no reads or writes will be allowed to that block until the lock is
+    released. This prevents accidental overwrites or missing data or reading
+    garbage data.
 
 ---- RATIONALE ----
 
 >> C7: Describe a file workload likely to benefit from buffer caching,
 >> and workloads likely to benefit from read-ahead and write-behind.
+
+    A workload to benefit from buffer caching is one where there are
+    a few files small files being accessed very frequently. For example
+    making immediate backups of large intermediate calculations like
+    with needing to save large numbers and or strings frequently modified.
+
+    Workloads to benefit from read-ahead write-behind are ones where
+    long sequential read/writes are performed on files. Like for instance
+    reading or writing a large book somewhere in disk. 
 
                SURVEY QUESTIONS
                ================
