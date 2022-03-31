@@ -1,10 +1,4 @@
 # CSCC69-Pintos
-
-Group Members
-- Tanner Bergeron, 1003924872
-- Bilal Ahmed, 1004254843
-
-
 ## Common Issues
 1. I'm getting an error: `/bin/bash^M: bad interpreter`. What should I do? 
 
